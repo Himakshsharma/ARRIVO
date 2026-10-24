@@ -1,0 +1,267 @@
+"""
+Data loading for Arrivo.
+
+Two data sources, ONE output schema:
+
+1. The real Kaggle "Delivery Truck Trips Data" file (recommended dataset).
+   Put the downloaded file in data/raw/ (any file whose name contains "truck",
+   .xlsx or .csv) and it is used automatically.
+
+2. A synthetic dataset that copies the Kaggle file's column layout, generated
+   from realistic Indian freight behaviour (distances, monsoon, festivals,
+   vehicle speeds, supplier reliability). It is used when the Kaggle file is
+   not present, so the whole pipeline can always run end to end.
+
+Both are converted by `standardise_*` into the same canonical schema, so
+nothing downstream needs to know which source was used.
+"""
+from __future__ import annotations
+
+import logging
+import re
+from datetime import timedelta
+
+import numpy as np
+import pandas as pd
+
+from src import config
+from src.data.geo import HUBS, climatology_weather, festival_dates, haversine_km, nearest_region
+
+log = logging.getLogger(__name__)
+
+# Canonical schema every loader must produce
+CANONICAL_COLUMNS = [
+    "booking_id", "dispatch_time", "trip_end_time",
+    "origin_city", "destination_city", "origin_lat", "origin_lon", "dest_lat", "dest_lon",
+    "origin_region", "dest_region", "origin_is_hilly", "dest_is_hilly",
+    "road_distance_km", "planned_hours", "vehicle_type", "material_type", "supplier_id",
+]
+
+VEHICLE_SPEED_KMPH = {          # effective average speed incl. stops (Indian highways)
+    "32 FT Multi-Axle": 33, "32 FT Single-Axle": 35, "24 FT Open Body": 37,
+    "20 FT Container": 39, "17 FT Container": 41, "14 FT Tata 407": 43,
+}
+MATERIAL_EFFECT = {             # multiplicative effect on transit time
+    "FMCG": 0.00, "Auto Parts": 0.01, "Electronics": 0.02, "Pharma": -0.03,
+    "Textiles": 0.00, "Cement & Steel": 0.06, "Perishables": -0.04,
+}
+
+
+# ---------------------------------------------------------------------------
+# 1) Synthetic data generator (Kaggle-like raw layout)
+# ---------------------------------------------------------------------------
+def generate_synthetic(n_trips: int = 15000, seed: int = config.RANDOM_SEED) -> pd.DataFrame:
+    """
+    Generate raw trips in the same column layout as the Kaggle truck dataset.
+
+    The ground-truth transit time is built from interpretable effects
+    (distance / vehicle speed, route congestion, supplier reliability, rain,
+    festivals, monsoon, hills, dispatch hour, random breakdowns) so the models
+    have real signal to learn and SHAP has real reasons to find.
+    Planned ETA ignores weather/festivals/route quirks, exactly like a simple
+    planner does in real life, which is WHY shipments end up late.
+    """
+    rng = np.random.default_rng(seed)
+    cities = list(HUBS)
+    lat = np.array([HUBS[c][0] for c in cities]); lon = np.array([HUBS[c][1] for c in cities])
+    weight = np.array([HUBS[c][4] for c in cities], dtype=float)
+
+    # --- choose routes: big hubs trade more, short routes are more common ----
+    dist = haversine_km(lat[:, None], lon[:, None], lat[None, :], lon[None, :])
+    pair_w = weight[:, None] * weight[None, :] * np.exp(-dist / 900.0)
+    pair_w[dist < 40] = 0.0                                   # skip same-metro pairs
+    pair_w = pair_w / pair_w.sum()
+    flat = rng.choice(pair_w.size, size=n_trips, p=pair_w.ravel())
+    o_idx, d_idx = np.unravel_index(flat, pair_w.shape)
+
+    # Route-level hidden characteristics (fixed per route -> learnable via route history)
+    route_rng = np.random.default_rng(seed + 1)
+    n_c = len(cities)
+    route_detour = 1.20 + route_rng.normal(0, 0.05, (n_c, n_c))
+    route_congestion = route_rng.normal(0, 0.09, (n_c, n_c))
+    # Suppliers (loading reliability)
+    suppliers = [f"SUP{i:03d}" for i in range(1, 26)]
+    sup_effect = dict(zip(suppliers, route_rng.normal(0, 0.06, len(suppliers))))
+    sup_loading = dict(zip(suppliers, route_rng.gamma(2.0, 0.6, len(suppliers))))
+    sup_w = route_rng.dirichlet(np.ones(len(suppliers)) * 2)
+
+    # --- dispatch timestamps: 2023-01-01 .. 2025-12-31, volume grows over time ---
+    start = pd.Timestamp("2023-01-01"); span_days = (pd.Timestamp("2025-12-31") - start).days
+    u = rng.random(n_trips) ** 0.85                           # mild growth trend
+    day_offset = np.floor(u * span_days).astype(int)
+    hour_p = np.array([2, 1, 1, 1, 2, 4, 7, 8, 8, 7, 5, 4, 4, 4, 4, 5, 6, 7, 8, 8, 7, 5, 4, 3], float)
+    hours = rng.choice(24, size=n_trips, p=hour_p / hour_p.sum())
+    minutes = rng.integers(0, 60, n_trips)
+    dispatch = start + pd.to_timedelta(day_offset, "D") + pd.to_timedelta(hours, "h") + pd.to_timedelta(minutes, "m")
+
+    fest = festival_dates()
+    rows = []
+    for i in range(n_trips):
+        o, d = cities[o_idx[i]], cities[d_idx[i]]
+        olat, olon, oreg, ohill, _ = HUBS[o]; dlat, dlon, dreg, dhill, _ = HUBS[d]
+        hav = float(dist[o_idx[i], d_idx[i]])
+        detour = route_detour[o_idx[i], d_idx[i]] + 0.12 * max(ohill, dhill)
+        road_km = hav * detour
+
+        # vehicle depends on distance (long hauls -> bigger trucks)
+        if road_km > 900:
+            vehicle = str(rng.choice(list(VEHICLE_SPEED_KMPH)[:3], p=[0.45, 0.35, 0.20]))
+        elif road_km > 350:
+            vehicle = str(rng.choice(list(VEHICLE_SPEED_KMPH)[1:5], p=[0.25, 0.30, 0.30, 0.15]))
+        else:
+            vehicle = str(rng.choice(list(VEHICLE_SPEED_KMPH)[3:], p=[0.30, 0.35, 0.35]))
+        material = str(rng.choice(list(MATERIAL_EFFECT), p=[0.28, 0.16, 0.12, 0.08, 0.12, 0.14, 0.10]))
+        supplier = str(rng.choice(suppliers, p=sup_w))
+
+        t0 = dispatch[i]; day = t0.date()
+        ow = climatology_weather(olat, olon, oreg, ohill, day)
+        dw = climatology_weather(dlat, dlon, dreg, dhill, day)
+        near_fest = any(abs((day - fd).days) <= 4 for _, fd in fest)
+        monsoon = t0.month in (6, 7, 8, 9)
+        peak = t0.hour in (8, 9, 10, 17, 18, 19, 20)
+        night = t0.hour >= 22 or t0.hour <= 4
+        regions_crossed = int(oreg != dreg)
+
+        speed = VEHICLE_SPEED_KMPH[vehicle]
+        drive_h = road_km / speed
+        mult = (1.0 + route_congestion[o_idx[i], d_idx[i]] + sup_effect[supplier]
+                + MATERIAL_EFFECT[material]
+                + 0.20 * max(ohill, dhill)
+                + min(0.004 * ow["rain_mm"] + 0.007 * dw["rain_mm"], 0.55)
+                + 0.13 * near_fest + 0.05 * monsoon + 0.05 * peak - 0.06 * night
+                - 0.04 * (t0.year >= 2025))                    # ops improvements in 2025
+        actual = drive_h * mult + sup_loading[supplier] + 1.5 * regions_crossed
+        actual *= float(np.exp(rng.normal(0, 0.10)))           # everyday randomness
+        if rng.random() < 0.04:                                # breakdown / accident
+            actual += float(rng.exponential(8.0))
+        actual = max(actual, 0.5)
+
+        # Planner: distance / nominal speed + fixed buffers. Ignores weather & festivals.
+        planned = road_km / (speed * 0.92) + 3.0 + 1.0 * regions_crossed
+        planned_eta = t0 + timedelta(hours=planned)
+        actual_eta = t0 + timedelta(hours=actual)
+        rows.append({
+            "BookingID": f"ARV{100000 + i}",
+            "trip_start_date": t0, "Planned_ETA": planned_eta,
+            "actual_eta": actual_eta, "trip_end_date": actual_eta,
+            "Origin_Location": o, "Destination_Location": d,
+            "Org_lat_lon": f"{olat},{olon}", "Des_lat_lon": f"{dlat},{dlon}",
+            "TRANSPORTATION_DISTANCE_IN_KM": round(road_km, 1),
+            "vehicleType": vehicle, "Material Shipped": material, "supplierNameCode": supplier,
+            "ontime": "G" if actual <= planned else None,
+            "delay": "R" if actual > planned else None,
+            "Data_Ping_time": actual_eta - timedelta(minutes=int(rng.integers(5, 90))),
+        })
+    df = pd.DataFrame(rows)
+    df = _inject_quality_issues(df, rng)
+    return df
+
+
+def _inject_quality_issues(df: pd.DataFrame, rng: np.random.Generator) -> pd.DataFrame:
+    """Real data is messy. Add the same kinds of problems the Kaggle file has,
+    so the cleaning step is genuinely exercised."""
+    df = df.copy()
+    n = len(df)
+    df.loc[rng.choice(n, int(0.03 * n), replace=False), "vehicleType"] = np.nan
+    df.loc[rng.choice(n, int(0.01 * n), replace=False), "TRANSPORTATION_DISTANCE_IN_KM"] = np.nan
+    df.loc[rng.choice(n, int(0.005 * n), replace=False), "supplierNameCode"] = np.nan
+    # inconsistent text formatting
+    idx = rng.choice(n, int(0.05 * n), replace=False)
+    df.loc[idx, "Origin_Location"] = df.loc[idx, "Origin_Location"].str.upper() + " "
+    # impossible records: trip ending before it started / absurdly long
+    bad = rng.choice(n, int(0.004 * n), replace=False)
+    df.loc[bad, "actual_eta"] = df.loc[bad, "trip_start_date"] - pd.Timedelta(hours=3)
+    df.loc[bad, "trip_end_date"] = df.loc[bad, "actual_eta"]
+    absurd = rng.choice(n, int(0.003 * n), replace=False)
+    df.loc[absurd, "actual_eta"] = df.loc[absurd, "trip_start_date"] + pd.Timedelta(days=40)
+    df.loc[absurd, "trip_end_date"] = df.loc[absurd, "actual_eta"]
+    # duplicated bookings (GPS provider sends the same booking twice)
+    dups = df.sample(frac=0.01, random_state=1)
+    return pd.concat([df, dups], ignore_index=True)
+
+
+# ---------------------------------------------------------------------------
+# 2) Standardisation into the canonical schema
+# ---------------------------------------------------------------------------
+def _split_latlon(series: pd.Series) -> tuple[pd.Series, pd.Series]:
+    parts = series.astype(str).str.split(",", n=1, expand=True)
+    return pd.to_numeric(parts[0], errors="coerce"), pd.to_numeric(parts[1], errors="coerce")
+
+
+def _clean_city(name: str) -> str:
+    """'GURGAON, HARYANA ' -> 'Gurgaon' ; 'delhi' -> 'Delhi'."""
+    if not isinstance(name, str):
+        return "Unknown"
+    first = re.split(r"[,\-]", name.strip())[0].strip()
+    return first.title() if first else "Unknown"
+
+
+def standardise_truck_raw(raw: pd.DataFrame) -> pd.DataFrame:
+    """Map Kaggle-style truck columns (real or synthetic) to the canonical schema.
+    Column matching is case-insensitive so small header differences don't break it."""
+    cols = {c.lower().strip(): c for c in raw.columns}
+
+    def col(*names):
+        for n in names:
+            if n.lower() in cols:
+                return raw[cols[n.lower()]]
+        raise KeyError(f"None of {names} found in dataset columns")
+
+    out = pd.DataFrame()
+    out["booking_id"] = col("BookingID").astype(str)
+    out["dispatch_time"] = pd.to_datetime(col("trip_start_date"), errors="coerce")
+    out["trip_end_time"] = pd.to_datetime(col("actual_eta", "trip_end_date"), errors="coerce")
+    planned_eta = pd.to_datetime(col("Planned_ETA"), errors="coerce")
+    out["planned_hours"] = (planned_eta - out["dispatch_time"]).dt.total_seconds() / 3600
+    out["origin_city"] = col("Origin_Location").map(_clean_city)
+    out["destination_city"] = col("Destination_Location").map(_clean_city)
+    out["origin_lat"], out["origin_lon"] = _split_latlon(col("Org_lat_lon"))
+    out["dest_lat"], out["dest_lon"] = _split_latlon(col("Des_lat_lon"))
+    out["road_distance_km"] = pd.to_numeric(col("TRANSPORTATION_DISTANCE_IN_KM"), errors="coerce")
+    out["vehicle_type"] = col("vehicleType")
+    out["material_type"] = col("Material Shipped", "Material_Shipped")
+    out["supplier_id"] = col("supplierNameCode", "supplierID")
+
+    # Region / hilly flags from the nearest known hub (works for any coordinates)
+    def region_info(lat, lon, city):
+        if city in HUBS:
+            return HUBS[city][2], HUBS[city][3]
+        if pd.isna(lat) or pd.isna(lon):
+            return "Unknown", 0
+        return nearest_region(lat, lon), int(lat > 29.5 and lon > 76.5)   # Himalayan belt
+
+    o = [region_info(a, b, c) for a, b, c in zip(out.origin_lat, out.origin_lon, out.origin_city)]
+    d = [region_info(a, b, c) for a, b, c in zip(out.dest_lat, out.dest_lon, out.destination_city)]
+    out["origin_region"], out["origin_is_hilly"] = zip(*o)
+    out["dest_region"], out["dest_is_hilly"] = zip(*d)
+    return out
+
+
+# ---------------------------------------------------------------------------
+# 3) Public entry point
+# ---------------------------------------------------------------------------
+def find_kaggle_file():
+    for p in sorted(config.RAW_DIR.glob("*")):
+        if "truck" in p.name.lower() and p.suffix.lower() in (".csv", ".xlsx", ".xls"):
+            return p
+    return None
+
+
+def load_raw(force_synthetic: bool = False) -> tuple[pd.DataFrame, str]:
+    """Return (raw dataframe, source name). Prefers the real Kaggle file."""
+    kaggle = None if force_synthetic else find_kaggle_file()
+    if kaggle is not None:
+        log.info("Loading real Kaggle dataset: %s", kaggle.name)
+        raw = pd.read_excel(kaggle) if kaggle.suffix.lower() != ".csv" else pd.read_csv(kaggle)
+        return raw, f"kaggle:{kaggle.name}"
+    if not config.SYNTHETIC_FILE.exists():
+        log.info("Kaggle file not found -> generating synthetic dataset")
+        config.RAW_DIR.mkdir(parents=True, exist_ok=True)
+        generate_synthetic().to_csv(config.SYNTHETIC_FILE, index=False)
+    raw = pd.read_csv(config.SYNTHETIC_FILE)
+    return raw, "synthetic"
+
+
+def load_canonical(force_synthetic: bool = False) -> tuple[pd.DataFrame, str]:
+    raw, source = load_raw(force_synthetic)
+    return standardise_truck_raw(raw), source

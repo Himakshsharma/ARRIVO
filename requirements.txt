@@ -1,0 +1,23 @@
+# ---- core data & ML ----
+numpy>=1.26
+pandas>=2.2
+scikit-learn>=1.6
+xgboost>=2.1
+lightgbm>=4.5
+optuna>=4.0
+holidays>=0.60
+requests>=2.32
+joblib>=1.4
+matplotlib>=3.8
+seaborn>=0.13
+# ---- API ----
+fastapi>=0.115
+uvicorn[standard]>=0.30
+pydantic>=2.7
+python-multipart>=0.0.9
+# ---- dashboard ----
+streamlit>=1.50
+plotly>=5.24
+pydeck>=0.9
+# ---- bonus: AI customer alerts (optional; template fallback works without a key) ----
+anthropic>=0.40

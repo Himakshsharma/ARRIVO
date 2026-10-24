@@ -1,0 +1,18 @@
+# Local "production-like" run:  docker compose up --build
+#   API:       http://localhost:8000/docs
+#   Dashboard: http://localhost:8501
+services:
+  api:
+    build: .
+    image: arrivo:latest
+    environment:
+      - PORT=8000
+    ports: ["8000:8000"]
+  dashboard:
+    image: arrivo:latest
+    depends_on: [api]
+    command: ["scripts/start_dashboard.sh"]
+    environment:
+      - PORT=8501
+      - ARRIVO_API_URL=http://api:8000
+    ports: ["8501:8501"]

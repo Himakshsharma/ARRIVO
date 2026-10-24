@@ -1,0 +1,19 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+.ipynb_checkpoints/
+mlruns/
+.pytest_cache/
+.ruff_cache/
+# raw data is downloaded/generated, never committed
+data/raw/*
+data/interim/*
+!data/raw/.gitkeep
+!data/interim/.gitkeep
+# processed features are rebuilt by the pipeline (keep the small demo batch)
+data/processed/*
+!data/processed/.gitkeep
+!data/processed/sample_batch.csv
+.DS_Store

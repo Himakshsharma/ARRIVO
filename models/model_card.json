@@ -1,0 +1,204 @@
+{
+  "project": "Arrivo",
+  "trained_at": "2026-10-24 19:29:07",
+  "data_source": "synthetic",
+  "rows_clean": 14892,
+  "split": {
+    "train": [
+      "2023-01-01 05:26:00",
+      "2024-12-31 22:12:00",
+      9126
+    ],
+    "validation": [
+      "2025-01-01 00:09:00",
+      "2025-06-30 20:40:00",
+      2824
+    ],
+    "test": [
+      "2025-07-01 05:21:00",
+      "2025-12-30 22:01:00",
+      2942
+    ]
+  },
+  "delay_definition": "actual_hours > planned_hours + 0.0 h",
+  "delay_rate": {
+    "train": 0.3853824238439623,
+    "val": 0.25106232294617564,
+    "test": 0.3752549286199864
+  },
+  "eta_model": {
+    "name": "GradientBoosting (sklearn)",
+    "params": {},
+    "tuning": "random-search",
+    "test_metrics": {
+      "MAE": 3.6961779353024653,
+      "RMSE": 5.431625454710263,
+      "R2": 0.9326418738751052,
+      "MAPE_%": 12.406944283579271,
+      "within_10pct_%": 51.22365737593474
+    },
+    "explainer": "saabas",
+    "shap_additivity_max_error": 3.126388037344441e-13
+  },
+  "delay_model": {
+    "name": "LogisticRegression",
+    "params": {
+      "C": 1.3939821771844678
+    },
+    "tuning": "random-search",
+    "threshold": 0.3382301545107962,
+    "test_metrics": {
+      "ROC_AUC": 0.8536531516613837,
+      "PR_AUC": 0.7943269574650915,
+      "F1": 0.7235606369946918,
+      "Precision": 0.6587360594795539,
+      "Recall": 0.802536231884058,
+      "Accuracy": 0.7698844323589396,
+      "threshold": 0.3382301545107962,
+      "TN": 1379,
+      "FP": 459,
+      "FN": 218,
+      "TP": 886
+    },
+    "explainer": "linear-exact",
+    "calibration": "sigmoid (Platt) on validation set"
+  },
+  "risk_bands": {
+    "Low": [
+      0.0,
+      0.35
+    ],
+    "Medium": [
+      0.35,
+      0.65
+    ],
+    "High": [
+      0.65,
+      1.01
+    ]
+  },
+  "top_eta_drivers": {
+    "planned_hours": 13.17,
+    "haversine_km": 1.646,
+    "supplier_hist_delay_rate": 1.309,
+    "dest_rain_mm": 1.086,
+    "route_hist_overrun_ratio": 0.981,
+    "days_to_festival": 0.942,
+    "osrm_duration_hrs": 0.878,
+    "route_hist_delay_rate": 0.845,
+    "road_distance_km": 0.671,
+    "is_monsoon": 0.632
+  },
+  "top_delay_drivers": {
+    "haversine_km": 1.4579,
+    "road_distance_km": 0.8481,
+    "osrm_duration_hrs": 0.6065,
+    "supplier_hist_delay_rate": 0.5471,
+    "route_hist_overrun_ratio": 0.4955,
+    "dest_rain_mm": 0.4334,
+    "route_hist_delay_rate": 0.3686,
+    "is_monsoon": 0.3314,
+    "is_peak_hour": 0.3055,
+    "origin_rain_mm": 0.2813
+  },
+  "median_planned_speed_kmph": 30.17203626603161,
+  "median_planned_buffer_hours": 1.3723393878801586,
+  "median_detour_factor": 1.2033887767306042,
+  "vehicle_types": [
+    "14 FT Tata 407",
+    "17 FT Container",
+    "20 FT Container",
+    "24 FT Open Body",
+    "32 FT Multi-Axle",
+    "32 FT Single-Axle",
+    "Unknown"
+  ],
+  "material_types": [
+    "Auto Parts",
+    "Cement & Steel",
+    "Electronics",
+    "FMCG",
+    "Perishables",
+    "Pharma",
+    "Textiles"
+  ],
+  "suppliers": [
+    "SUP001",
+    "SUP002",
+    "SUP003",
+    "SUP004",
+    "SUP005",
+    "SUP006",
+    "SUP007",
+    "SUP008",
+    "SUP009",
+    "SUP010",
+    "SUP011",
+    "SUP012",
+    "SUP013",
+    "SUP014",
+    "SUP015",
+    "SUP016",
+    "SUP017",
+    "SUP018",
+    "SUP019",
+    "SUP020",
+    "SUP021",
+    "SUP022",
+    "SUP023",
+    "SUP024",
+    "SUP025",
+    "UNKNOWN"
+  ],
+  "clean_report": {
+    "rows_in": 15150,
+    "duplicates_removed": 150,
+    "missing_timestamps_removed": 0,
+    "distance_imputed": 150,
+    "median_detour_factor": 1.203,
+    "vehicle_type_imputed": 450,
+    "invalid_trips_removed": 108,
+    "rows_out": 14892,
+    "delay_rate": 0.3579
+  },
+  "backends": {
+    "xgboost": null,
+    "lightgbm": null,
+    "optuna": null,
+    "mlflow": null
+  },
+  "features": [
+    "road_distance_km",
+    "haversine_km",
+    "route_detour_ratio",
+    "osrm_duration_hrs",
+    "planned_hours",
+    "planned_speed_kmph",
+    "dispatch_hour",
+    "dispatch_weekday",
+    "dispatch_month",
+    "is_weekend",
+    "is_peak_hour",
+    "is_night_dispatch",
+    "is_national_holiday",
+    "is_festival_window",
+    "days_to_festival",
+    "is_monsoon",
+    "origin_is_hilly",
+    "dest_is_hilly",
+    "origin_rain_mm",
+    "dest_rain_mm",
+    "origin_temp_c",
+    "dest_temp_c",
+    "max_wind_kmph",
+    "is_heavy_rain",
+    "route_hist_delay_rate",
+    "route_hist_overrun_ratio",
+    "route_hist_trips",
+    "supplier_hist_delay_rate",
+    "vehicle_type",
+    "material_type",
+    "origin_region",
+    "dest_region"
+  ]
+}

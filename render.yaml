@@ -1,0 +1,21 @@
+# Render Blueprint: New + -> Blueprint -> pick this repo. Creates two free web services.
+services:
+  - type: web
+    name: arrivo-api
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerCommand: scripts/start_api.sh
+    healthCheckPath: /health
+    envVars:
+      - key: ANTHROPIC_API_KEY      # optional, enables AI-written customer alerts
+        sync: false
+  - type: web
+    name: arrivo-dashboard
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerCommand: scripts/start_dashboard.sh
+    envVars:
+      - key: ARRIVO_API_URL         # paste the API's public URL, e.g. https://arrivo-api.onrender.com
+        sync: false

@@ -1,0 +1,13 @@
+.git
+.venv
+venv
+__pycache__
+*.pyc
+mlruns
+notebooks
+.ipynb_checkpoints
+data/interim
+data/raw/*.xlsx
+reports/metrics/runs.jsonl
+models/*.joblib
+models/model_card.json

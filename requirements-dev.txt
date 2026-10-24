@@ -1,0 +1,9 @@
+-r requirements.txt
+# experiment tracking, explainability plots, notebooks, tests
+mlflow>=2.16
+shap>=0.46
+pytest>=8.0
+httpx>=0.27
+jupyterlab>=4.2
+nbformat>=5.10
+ruff>=0.6
