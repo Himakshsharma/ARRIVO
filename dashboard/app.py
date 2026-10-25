@@ -171,9 +171,8 @@ div[data-baseweb="select"] > div, div[data-baseweb="input"], div[data-baseweb="i
 div[data-baseweb="base-input"], .stApp input, .stApp textarea, [data-testid="stFileUploaderDropzone"] {{
   background-color: {T["INPUT"]} !important; color: {TEXT} !important; border-color: {LINE} !important; }}
 div[data-baseweb="select"] svg, div[data-baseweb="input"] svg {{ fill: {MUTED}; }}
-[data-testid="stMultiSelect"] div[data-baseweb="select"] div:not([data-baseweb="tag"]):not([data-baseweb="tag"] *) {{
-  background-color: {T["INPUT"]} !important; }}
-[data-testid="stMultiSelect"] div[data-baseweb="select"] > div {{ border: 1px solid {LINE} !important; }}
+[data-testid="stMultiSelect"] div:has(> [data-testid="stMultiSelectTagsContainer"]) {{
+  background-color: {T["INPUT"]} !important; border-color: {LINE} !important; }}
 div[data-baseweb="popover"] ul, div[data-baseweb="popover"] li, div[data-baseweb="menu"],
 div[data-baseweb="calendar"], div[data-baseweb="calendar"] * {{ background-color: {CARD} !important; color: {TEXT} !important; }}
 div[data-baseweb="popover"] li:hover {{ background-color: {T["INPUT"]} !important; }}
@@ -183,9 +182,10 @@ div[data-baseweb="popover"] li:hover {{ background-color: {T["INPUT"]} !importan
   background-color: {CARD}; color: {TEXT}; border-color: {LINE}; }}
 [data-testid="stButtonGroup"] button {{ background-color: {CARD} !important; border-color: {LINE} !important; }}
 [data-testid="stButtonGroup"] button p {{ color: {TEXT} !important; }}
-[data-testid="stButtonGroup"] button[aria-checked="true"] {{ background-color: {SIGN_GREEN} !important;
-  border-color: {SIGN_GREEN} !important; }}
-[data-testid="stButtonGroup"] button[aria-checked="true"] p {{ color: #fff !important; }}
+[data-testid="stButtonGroup"] button[aria-checked="true"], [data-testid="stButtonGroup"] button[aria-pressed="true"] {{
+  background-color: {SIGN_GREEN} !important; border-color: {SIGN_GREEN} !important; }}
+[data-testid="stButtonGroup"] button[aria-checked="true"] p,
+[data-testid="stButtonGroup"] button[aria-pressed="true"] p {{ color: #fff !important; }}
 .stButton > button[kind="primary"] {{ background-color: {SIGN_GREEN}; border-color: {SIGN_GREEN}; color: #fff; }}
 /* expanders, tabs, alerts */
 [data-testid="stExpander"] details {{ background: {CARD}; border-color: {LINE}; }}
