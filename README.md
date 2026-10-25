@@ -12,6 +12,73 @@ Late deliveries cost logistics companies money and customer trust. **Arrivo** lo
 
 Users: logistics operations managers who need to spot at-risk shipments early and warn customers before they complain.
 
+**🔴 Live demo:** LIVE_URL_PLACEHOLDER
+
+---
+
+## Detailed project summary
+
+### 1. The problem
+Every truck shipment leaves with a *planned* ETA, usually computed by a simple rule: distance ÷ nominal speed + a fixed buffer. That rule ignores everything that actually slows trucks down in India: monsoon rain, festival traffic around Diwali or Holi, hilly roads, rush-hour city exits, routes that are chronically congested and transport suppliers that load late. In our data about **36% of shipments arrive later than planned**. Operations teams usually find out only when the customer calls to complain.
+
+Arrivo's goal is to flag those shipments **at the moment of dispatch**, while there is still time to act: re-route, swap the vehicle, warn the warehouse, or tell the customer early.
+
+### 2. What the system does
+For each shipment, given only information available at dispatch (origin, destination, dispatch time, vehicle, cargo, supplier, weather, calendar), Arrivo returns:
+1. **ETA**: predicted transit hours and expected arrival date/time (regression).
+2. **Delay risk**: a calibrated probability that the shipment will be late, mapped to **Low / Medium / High** (classification).
+3. **Top 3 reasons**: the factors that pushed this prediction up or down, in plain English with their effect in hours, e.g. *"Festival-season traffic (2 days from a major festival) (+1.7 hrs)"* (explainability with SHAP).
+4. **Customer alert** (bonus): a short, polite message for the customer, written by an LLM (Claude) or a fixed template.
+
+### 3. How it works, end to end
+
+**Step 1: Data loading** (`src/data/load.py`). The recommended dataset is Kaggle's *Delivery Truck Trips Data* (Indian truck bookings with planned and actual ETA). Because it is small and spans a short period, the project ships a **synthetic twin**: ~15,000 trips between 27 Indian logistics hubs over 2023–2025, with the same column layout. It is generated from documented, realistic effects (vehicle speeds, regional rainfall normals, festivals, hills, route congestion, supplier reliability, random breakdowns), so we know the true causes of delay and can check that the model finds them. Dropping the real Kaggle file into `data/raw/` switches the whole pipeline to it automatically.
+
+**Step 2: Cleaning and targets** (`src/data/clean.py`). Duplicate bookings are removed. Physically impossible trips are dropped: negative durations, trips over 10 days, or average speeds outside 5–90 km/h, which point to timestamp errors rather than genuine delays. Missing distances are estimated from coordinates, and missing categories become "Unknown". Two targets are created:
+- `actual_hours` = arrival − dispatch (ETA target)
+- `is_delayed` = 1 if `actual_hours > planned_hours` (delay target, the same definition as the dataset's own on-time flag)
+
+**Step 3: Exploratory analysis** (`src/eda.py`, `notebooks/01_eda.ipynb`). This step produces 11 plots and auto-written insights. Key findings: monsoon months are late 49% of the time vs 28% in dry months; heavy rain at the destination raises the delay rate from 29% to 87%; festival windows run 49% late vs 34%; rush-hour dispatches 42% vs 25% for night runs; delay rates differ hugely between routes (0–88%). Each finding became a feature.
+
+**Step 4: Enrichment** (`src/data/enrich.py`)
+- **Weather**: daily rain, temperature and wind at origin and destination from the **Open-Meteo** API. Results are cached on disk, and a climatology fallback is used when offline.
+- **Route**: road distance and free-flow driving time from **OSRM**, cached, with a distance-based fallback.
+- **Calendar**: national holidays from the `holidays` library plus a **custom Indian festival calendar** (Diwali, Holi, Dussehra, Ganesh Chaturthi, Eid, Pongal, Christmas) and monsoon flags.
+
+**Step 5: Feature engineering** (`src/features/build_features.py`). There are 32 features in 7 families: route and schedule, dispatch time, calendar/season, geography, weather, history, and vehicle/cargo (full list in [docs/feature_list.md](docs/feature_list.md)). The most powerful are the **route and supplier history** features: each route's and supplier's past delay rate. To avoid leakage they are computed **only from training data**, **out-of-fold** for training rows (a row never sees its own label), and **smoothed** so rarely-seen routes are pulled toward the average.
+
+**Step 6: Time-based split.** The model trains on **2023–2024**, picks models and thresholds on **Jan–Jun 2025**, and is tested once on **Jul–Dec 2025**. A random split would let the model learn from the future and overstate accuracy.
+
+**Step 7: Modelling** (`src/models/`)
+- *ETA*: Linear Regression → Random Forest → XGBoost → LightGBM (scikit-learn Gradient Boosting stands in if those two aren't installed), all compared against the planner's own ETA.
+- *Delay*: Logistic Regression → Random Forest → XGBoost → LightGBM, all with **class weighting** for the 36/64 imbalance.
+- The best model on validation is tuned with **Optuna** (random search fallback). The decision threshold is chosen to maximise F1 on validation, and probabilities are **calibrated** (Platt scaling) so that "80% risk" really means about 80% of such shipments are late.
+- Every run is logged to **MLflow** (plus a JSON log), and the final models are saved with joblib together with a `model_card.json`.
+
+**Step 8: Explainability** (`src/explain/shap_utils.py`). SHAP values split each prediction into per-feature contributions that add up exactly to the prediction; a test checks this. Correlated features (road km, straight-line km, drive time) are summed into "reason groups" before choosing the top 3, and each reason is turned into a sentence using the shipment's real values. Global importance, beeswarm and waterfall plots are in `reports/figures/`.
+
+**Step 9: Serving** (`api/`). A **FastAPI** service exposes `/predict`, `/predict/batch` (CSV upload, results ranked by risk, bad rows reported instead of failing the whole file), `/alert`, `/health`, `/meta` and `/model/metrics`. Requests are validated by **Pydantic**, and interactive Swagger docs are served at `/docs`. Training and serving share the same feature code, so there is no train/serve skew.
+
+**Step 10: Dashboard** (`dashboard/`). The **Streamlit** app has four pages:
+- **Check a shipment**: form, ETA cards, risk gauge, reasons, route map, what-if rain sliders and the customer-alert generator.
+- **Operations view**: upload a day's dispatch list and get a risk-sorted, filterable, downloadable table plus a map.
+- **Model insights**: metrics, comparison tables, calibration and SHAP/EDA plots.
+- **About**.
+
+The dashboard calls the API, and falls back to running the models in-process when no API is available. That fallback is how the live demo runs on Streamlit Community Cloud.
+
+**Step 11: Quality and deployment.** There are 32 pytest tests (cleaning, features, leakage guard, SHAP additivity, predictor contract, batch errors, HTTP endpoints) and a Docker image that trains at build time if models are missing. The repo includes `docker-compose.yml`, a Render blueprint and Hugging Face Spaces files.
+
+### 4. Results in one paragraph
+On the untouched test period, the ETA model's average error is **3.70 hours**, 27% lower than the planner's own estimate (5.08 h), with R² 0.93. The delay model ranks risky shipments well (**ROC-AUC 0.854**) and catches **80%** of late shipments. Its risk bands are honest: High-risk shipments were actually late 84% of the time, Medium 53% and Low 14%. The strongest delay drivers found by SHAP are a route's track record, rain, supplier reliability, dispatch hour, monsoon and festivals, which are exactly the effects built into the data.
+
+### 5. Key design decisions (why)
+- **Leakage prevention first**: no post-delivery columns (enforced by a test), train-only out-of-fold history, a time-based split, and tuning/calibration on validation only.
+- **Simple when simple wins**: logistic regression beat tree ensembles for delay risk on validation, so it was kept; complexity has to earn its place.
+- **Trustworthy probabilities**: calibration makes the Low/Medium/High bands meaningful to managers.
+- **Explanations people can act on**: grouped SHAP reasons in plain English, with hours of impact.
+- **Never break the demo**: every external API is cached and has an offline fallback, the LLM alert falls back to a template, and the dashboard falls back to in-process models.
+
 ---
 
 ## Results (held-out test set: Jul–Dec 2025, 2,942 trips)

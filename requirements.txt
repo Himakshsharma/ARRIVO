@@ -1,7 +1,7 @@
 # ---- core data & ML ----
 numpy>=1.26
 pandas>=2.2
-scikit-learn>=1.6
+scikit-learn==1.9.1   # pinned: saved models were pickled with this version
 xgboost>=2.1
 lightgbm>=4.5
 optuna>=4.0

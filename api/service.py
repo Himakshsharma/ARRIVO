@@ -6,6 +6,8 @@ from __future__ import annotations
 
 import io
 import json
+import logging
+import os
 from functools import lru_cache
 
 import pandas as pd
@@ -29,8 +31,23 @@ class ModelNotReady(RuntimeError):
 def get_predictor() -> ArrivoPredictor:
     """Load the models once per process (they're ~MBs; loading per request would be slow)."""
     if not config.ETA_MODEL_FILE.exists():
-        raise ModelNotReady("Models not trained yet. Run: python -m src.pipeline")
-    return ArrivoPredictor()
+        if os.getenv("ARRIVO_AUTO_TRAIN", "1") != "1":
+            raise ModelNotReady("Models not trained yet. Run: python -m src.pipeline")
+        _quick_train("no saved models found")
+    try:
+        return ArrivoPredictor()
+    except Exception as e:  # noqa: BLE001 - e.g. models pickled with a different scikit-learn
+        if os.getenv("ARRIVO_AUTO_TRAIN", "1") != "1":
+            raise ModelNotReady(f"Saved models could not be loaded ({e}). Re-run: python -m src.pipeline") from e
+        _quick_train(f"saved models incompatible: {e}")
+        return ArrivoPredictor()
+
+
+def _quick_train(reason: str) -> None:
+    """Self-healing for cloud hosts: retrain quickly (few tuning trials) so the app always starts."""
+    logging.getLogger(__name__).warning("Retraining models (%s)", reason)
+    from src.pipeline import run
+    run(n_trials=2)
 
 
 def health() -> dict:
