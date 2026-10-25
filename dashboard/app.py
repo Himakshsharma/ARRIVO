@@ -228,11 +228,11 @@ def gauge(prob: float, bands: dict) -> go.Figure:
     steps = [{"range": [lo * 100, min(hi, 1) * 100], "color": RISK_COLORS[n] + "40"} for n, (lo, hi) in bands.items()]
     fig = go.Figure(go.Indicator(
         mode="gauge+number", value=prob * 100,
-        number={"suffix": "%", "font": {"size": 44, "family": DISPLAY, "color": ASPHALT}},
+        number={"suffix": "%", "font": {"size": 36, "family": DISPLAY, "color": ASPHALT}},
         gauge={"axis": {"range": [0, 100], "tickcolor": ASPHALT_SOFT}, "bar": {"color": ASPHALT, "thickness": 0.28},
                "steps": steps, "borderwidth": 0}))
-    style_fig(fig, height=230)
-    fig.update_layout(margin=dict(l=25, r=25, t=20, b=0), title=None)
+    style_fig(fig, height=210)
+    fig.update_layout(margin=dict(l=30, r=30, t=10, b=0), title=None)
     return fig
 
 
@@ -412,25 +412,30 @@ def page_predict():
                 f"<span class='pill' style='background:{RISK_COLORS[level]}'>{level} risk</span>", unsafe_allow_html=True)
     st.markdown(f"<p class='note' style='font-size:1.05rem'>This shipment is {verdict}.</p>", unsafe_allow_html=True)
 
-    left, mid, right = st.columns([1, 1.25, 1.1], gap="large")
+    left, mid, right = st.columns([1, 1.1, 1.1], gap="medium")
     with left:
         stone(pred)
     with mid:
-        m1, m2 = st.columns(2)
-        m1.metric("Predicted arrival", fmt_dt(pred["expected_arrival"]))
-        m2.metric("Planned arrival", fmt_dt(pred["planned_arrival"]),
-                  f"{late_by:+.1f} hrs vs plan", delta_color="inverse")
-        road_strip(pred)
-        st.markdown("#### Why")
-        reasons_block(pred)
-    with right:
         st.markdown("#### Chance of arriving late")
         st.plotly_chart(gauge(pred["delay_probability"], meta["risk_bands"]), width="stretch",
                         config={"displayModeBar": False})
+    with right:
+        st.metric("Predicted arrival", fmt_dt(pred["expected_arrival"]))
+        st.metric("Planned arrival", fmt_dt(pred["planned_arrival"]),
+                  f"{late_by:+.1f} hrs vs plan", delta_color="inverse")
+    road_strip(pred)
+    why, ctx_col = st.columns([1.7, 1], gap="large")
+    with why:
+        st.markdown("#### Why")
+        reasons_block(pred)
+    with ctx_col:
         ctx = pred["context"]
+        fest = (f"{ctx['nearest_festival']} season traffic is expected. " if ctx.get("is_festival_window") else "")
+        st.markdown("#### Conditions")
         st.markdown(f"<p class='note'>This route was late {ctx['route_hist_delay_rate']:.0%} of the time over "
-                    f"{ctx['route_hist_trips']} past trips. Rain on dispatch day: {ctx['origin_rain_mm']:.0f} mm at origin, "
-                    f"{ctx['dest_rain_mm']:.0f} mm at destination ({ctx['weather_source']}).</p>", unsafe_allow_html=True)
+                    f"{ctx['route_hist_trips']} past trips. Rain on dispatch day: {ctx['origin_rain_mm']:.0f} mm at "
+                    f"origin and {ctx['dest_rain_mm']:.0f} mm at destination ({ctx['weather_source']}). "
+                    f"{'Monsoon season. ' if ctx.get('is_monsoon') else ''}{fest}</p>", unsafe_allow_html=True)
 
     tab_map, tab_whatif, tab_alert = st.tabs(["Route map", "What if…", "Message the customer"])
     with tab_map:
@@ -446,8 +451,9 @@ def page_predict():
             b.plotly_chart(whatif_chart(w["hour"], "A different dispatch hour", "Dispatch hour", w["now"][1],
                                         meta["risk_bands"]), width="stretch", config={"displayModeBar": False})
             best = w["hour"].loc[w["hour"].risk.idxmin()]
-            st.markdown(f"<p class='note'>Lowest-risk dispatch slot for this route and day: <b>{int(best.x):02d}:00</b> "
-                        f"({best.risk:.0%} risk).</p>", unsafe_allow_html=True)
+            if w["hour"].risk.max() - best.risk >= 0.05:
+                st.markdown(f"<p class='note'>Lowest-risk dispatch slot for this route and day: <b>{int(best.x):02d}:00</b> "
+                            f"({best.risk:.0%} risk).</p>", unsafe_allow_html=True)
         except ApiError as e:
             st.warning(f"What-if analysis isn't available right now: {e}")
     with tab_alert:
