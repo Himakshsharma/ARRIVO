@@ -59,10 +59,10 @@ For each shipment, given only information available at dispatch (origin, destina
 
 **Step 9: Serving** (`api/`). A **FastAPI** service exposes `/predict`, `/predict/batch` (CSV upload, results ranked by risk, bad rows reported instead of failing the whole file), `/alert`, `/health`, `/meta` and `/model/metrics`. Requests are validated by **Pydantic**, and interactive Swagger docs are served at `/docs`. Training and serving share the same feature code, so there is no train/serve skew.
 
-**Step 10: Dashboard** (`dashboard/`). The **Streamlit** app has four pages:
-- **Check a shipment**: form, ETA cards, risk gauge, reasons, route map, what-if rain sliders and the customer-alert generator.
-- **Operations view**: upload a day's dispatch list and get a risk-sorted, filterable, downloadable table plus a map.
-- **Model insights**: metrics, comparison tables, calibration and SHAP/EDA plots.
+**Step 10: Dashboard** (`dashboard/`). A **Streamlit** app styled after Indian national-highway signage (asphalt, milestone yellow, highway-sign green; Barlow type). It has four sections:
+- **Check a shipment**: one-click example shipments (monsoon long haul, Diwali rush, hill run, quiet night) or your own form. The result is shown as a kilometre stone with hours on the road, a risk gauge, a to-scale road strip comparing planned and predicted arrival, the top reasons, an interactive route map, a **what-if explorer** (how risk changes with destination rain and dispatch hour, with the lowest-risk dispatch slot), and the customer-message generator.
+- **Dispatch board**: score a whole day's CSV (or the built-in sample day). You get risk counts, a risk donut, the 12 riskiest shipments, a filterable table with risk bars and CSV download, and a map of every route coloured by risk.
+- **Model insights**: interactive charts comparing every model against the planner, SHAP drivers, a predicted-vs-actual calibration chart, and the EDA plots.
 - **About**.
 
 The dashboard calls the API, and falls back to running the models in-process when no API is available. That fallback is how the live demo runs on Streamlit Community Cloud.
