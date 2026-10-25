@@ -171,6 +171,9 @@ div[data-baseweb="select"] > div, div[data-baseweb="input"], div[data-baseweb="i
 div[data-baseweb="base-input"], .stApp input, .stApp textarea, [data-testid="stFileUploaderDropzone"] {{
   background-color: {T["INPUT"]} !important; color: {TEXT} !important; border-color: {LINE} !important; }}
 div[data-baseweb="select"] svg, div[data-baseweb="input"] svg {{ fill: {MUTED}; }}
+[data-testid="stMultiSelect"] div[data-baseweb="select"] div:not([data-baseweb="tag"]):not([data-baseweb="tag"] *) {{
+  background-color: {T["INPUT"]} !important; }}
+[data-testid="stMultiSelect"] div[data-baseweb="select"] > div {{ border: 1px solid {LINE} !important; }}
 div[data-baseweb="popover"] ul, div[data-baseweb="popover"] li, div[data-baseweb="menu"],
 div[data-baseweb="calendar"], div[data-baseweb="calendar"] * {{ background-color: {CARD} !important; color: {TEXT} !important; }}
 div[data-baseweb="popover"] li:hover {{ background-color: {T["INPUT"]} !important; }}
@@ -479,7 +482,7 @@ def page_predict():
         stone(pred)
     with mid:
         st.markdown("#### Chance of arriving late")
-        st.plotly_chart(gauge(pred["delay_probability"], meta["risk_bands"]), width="stretch",
+        st.plotly_chart(theme=None, figure_or_data=gauge(pred["delay_probability"], meta["risk_bands"]), width="stretch",
                         config={"displayModeBar": False})
     with right:
         st.metric("Predicted arrival", fmt_dt(pred["expected_arrival"]))
@@ -501,16 +504,16 @@ def page_predict():
 
     tab_map, tab_whatif, tab_alert = st.tabs(["Route map", "What if…", "Message the customer"])
     with tab_map:
-        st.plotly_chart(route_map([pred], height=380), width="stretch", config={"scrollZoom": True})
+        st.plotly_chart(theme=None, figure_or_data=route_map([pred], height=380), width="stretch", config={"scrollZoom": True})
     with tab_whatif:
         st.markdown("<p class='note'>The same shipment re-scored with different rain at the destination and different "
                     "dispatch hours. The dotted line marks the current choice.</p>", unsafe_allow_html=True)
         try:
             w = whatif(ss.payload, pred)
             a, b = st.columns(2)
-            a.plotly_chart(whatif_chart(w["rain"], "More rain at the destination", "Rain (mm)", w["now"][0],
+            a.plotly_chart(theme=None, figure_or_data=whatif_chart(w["rain"], "More rain at the destination", "Rain (mm)", w["now"][0],
                                         meta["risk_bands"]), width="stretch", config={"displayModeBar": False})
-            b.plotly_chart(whatif_chart(w["hour"], "A different dispatch hour", "Dispatch hour", w["now"][1],
+            b.plotly_chart(theme=None, figure_or_data=whatif_chart(w["hour"], "A different dispatch hour", "Dispatch hour", w["now"][1],
                                         meta["risk_bands"]), width="stretch", config={"displayModeBar": False})
             best = w["hour"].loc[w["hour"].risk.idxmin()]
             if w["hour"].risk.max() - best.risk >= 0.05:
@@ -582,7 +585,7 @@ def page_operations():
                                hovertemplate="%{label} risk: %{value} shipments<extra></extra>", textinfo="value"))
         fig.update_layout(title="Shipments by risk", annotations=[dict(text=f"<b>{len(df)}</b><br>trucks", showarrow=False,
                                                                        font=dict(family=DISPLAY, size=22))])
-        st.plotly_chart(style_fig(fig, 300, legend=True), width="stretch", config={"displayModeBar": False})
+        st.plotly_chart(theme=None, figure_or_data=style_fig(fig, 300, legend=True), width="stretch", config={"displayModeBar": False})
     with b:
         top = df.sort_values("Delay risk", ascending=True).tail(12)
         fig = go.Figure(go.Bar(x=top["Delay risk"] * 100, y=top["Shipment"] + "  " + top["Route"], orientation="h",
@@ -591,7 +594,7 @@ def page_operations():
                                hovertemplate="%{y}<br>Risk %{x:.0f}%<br>ETA %{customdata[0]:.1f} hrs<br>%{customdata[1]}<extra></extra>"))
         fig.update_xaxes(range=[0, 100], ticksuffix="%")
         fig.update_layout(title="The 12 riskiest shipments")
-        st.plotly_chart(style_fig(fig, 300), width="stretch", config={"displayModeBar": False})
+        st.plotly_chart(theme=None, figure_or_data=style_fig(fig, 300), width="stretch", config={"displayModeBar": False})
 
     st.markdown("#### Every shipment")
     f1, f2 = st.columns([1.4, 1])
@@ -611,7 +614,7 @@ def page_operations():
         buf = io.StringIO(); shown.to_csv(buf, index=False)
         st.download_button("Download this list", buf.getvalue(), "arrivo_at_risk.csv", "text/csv")
     ids = set(shown.Shipment)
-    st.plotly_chart(route_map([r for r in rows if r["shipment_id"] in ids][:150], height=460), width="stretch",
+    st.plotly_chart(theme=None, figure_or_data=route_map([r for r in rows if r["shipment_id"] in ids][:150], height=460), width="stretch",
                     config={"scrollZoom": True})
 
 
@@ -647,14 +650,14 @@ def page_insights():
                                hovertemplate="%{y}<br>Test MAE %{x:.2f} hrs<extra></extra>"))
         fig.update_layout(title="ETA error by model (lower is better)")
         fig.update_xaxes(title="Mean absolute error, hours", range=[0, e.test_MAE.max() * 1.25])
-        a.plotly_chart(style_fig(fig, 300), width="stretch", config={"displayModeBar": False})
+        a.plotly_chart(theme=None, figure_or_data=style_fig(fig, 300), width="stretch", config={"displayModeBar": False})
         colors = [SIGN_GREEN if x.startswith(dly["name"]) else "#9AA3AD" for x in d.model]
         fig = go.Figure(go.Bar(x=d.test_ROC_AUC, y=d.label, orientation="h", marker_color=colors,
                                text=[f"{v:.3f}" for v in d.test_ROC_AUC], textposition="outside", cliponaxis=False,
                                hovertemplate="%{y}<br>Test ROC-AUC %{x:.3f}<extra></extra>"))
         fig.update_layout(title="Delay-risk ranking quality (higher is better)")
         fig.update_xaxes(title="ROC-AUC", range=[0.5, 1])
-        b.plotly_chart(style_fig(fig, 280), width="stretch", config={"displayModeBar": False})
+        b.plotly_chart(theme=None, figure_or_data=style_fig(fig, 280), width="stretch", config={"displayModeBar": False})
         st.markdown(f"<p class='note'>Yellow is the planner's own ETA with no machine learning. Green marks the "
                     f"models in use: <b>{eta['name']}</b> for ETA and <b>{dly['name']}</b> for delay risk "
                     f"(decision threshold {dly['threshold']:.2f}).</p>", unsafe_allow_html=True)
@@ -670,7 +673,7 @@ def page_insights():
             fig = go.Figure(go.Bar(x=s.values, y=[FEATURE_LABELS.get(k, k) for k in s.index], orientation="h",
                                    marker_color=SIGN_GREEN, hovertemplate="%{y}: %{x:.3f}<extra></extra>"))
             fig.update_layout(title=title); fig.update_xaxes(title=unit)
-            col.plotly_chart(style_fig(fig, 380), width="stretch", config={"displayModeBar": False})
+            col.plotly_chart(theme=None, figure_or_data=style_fig(fig, 380), width="stretch", config={"displayModeBar": False})
         img = [f for f in ("shap_delay_summary.png", "shap_delay_waterfall_example.png") if (FIG_DIR / f).exists()]
         if img:
             st.markdown("<p class='note'>Below, each dot is one shipment (red = high value of that factor), and one "
@@ -689,7 +692,7 @@ def page_insights():
                                  text=[f"{v:.0%}" for v in cal.actual_late_rate], textposition="outside"))
             fig.update_yaxes(range=[0, 100], ticksuffix="%")
             fig.update_layout(title="Predicted risk vs what really happened", barmode="group")
-            st.plotly_chart(style_fig(fig, 360, legend=True), width="stretch", config={"displayModeBar": False})
+            st.plotly_chart(theme=None, figure_or_data=style_fig(fig, 360, legend=True), width="stretch", config={"displayModeBar": False})
             st.markdown("<p class='note'>When Arrivo says a shipment is High risk, it really is late most of the time; "
                         "Low-risk shipments rarely are. That's what makes the levels safe to act on.</p>",
                         unsafe_allow_html=True)
