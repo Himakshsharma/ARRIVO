@@ -586,14 +586,14 @@ def page_insights():
         a, b = st.container(), st.container()
         colors = [YELLOW if "Planner" in x else (SIGN_GREEN if x.startswith(eta["name"]) else "#9AA3AD") for x in e.model]
         fig = go.Figure(go.Bar(x=e.test_MAE, y=e.label, orientation="h", marker_color=colors,
-                               text=[f"{v:.2f} h" for v in e.test_MAE], textposition="outside",
+                               text=[f"{v:.2f} h" for v in e.test_MAE], textposition="outside", cliponaxis=False,
                                hovertemplate="%{y}<br>Test MAE %{x:.2f} hrs<extra></extra>"))
         fig.update_layout(title="ETA error by model (lower is better)")
         fig.update_xaxes(title="Mean absolute error, hours", range=[0, e.test_MAE.max() * 1.25])
         a.plotly_chart(style_fig(fig, 300), width="stretch", config={"displayModeBar": False})
         colors = [SIGN_GREEN if x.startswith(dly["name"]) else "#9AA3AD" for x in d.model]
         fig = go.Figure(go.Bar(x=d.test_ROC_AUC, y=d.label, orientation="h", marker_color=colors,
-                               text=[f"{v:.3f}" for v in d.test_ROC_AUC], textposition="outside",
+                               text=[f"{v:.3f}" for v in d.test_ROC_AUC], textposition="outside", cliponaxis=False,
                                hovertemplate="%{y}<br>Test ROC-AUC %{x:.3f}<extra></extra>"))
         fig.update_layout(title="Delay-risk ranking quality (higher is better)")
         fig.update_xaxes(title="ROC-AUC", range=[0.5, 1])
