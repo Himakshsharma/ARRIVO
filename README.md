@@ -12,7 +12,7 @@ Late deliveries cost logistics companies money and customer trust. **Arrivo** lo
 
 Users: logistics operations managers who need to spot at-risk shipments early and warn customers before they complain.
 
-**🔴 Live demo:** LIVE_URL_PLACEHOLDER
+**🔴 Live demo:** [arrivo-eta.streamlit.app](https://arrivo-eta.streamlit.app) — the free Streamlit server sleeps when idle; if you see "Zzzz", click *Yes, get this app back up* and wait ~30 s.
 
 ---
 
@@ -217,6 +217,9 @@ Unknown cities work too if you pass `origin_lat/origin_lon` (or `destination_lat
 ---
 
 ## Deployment
+
+**Live (Streamlit Community Cloud):** https://arrivo-eta.streamlit.app, deployed from `dashboard/app.py` on Python 3.12. On Streamlit Cloud the dashboard runs the models in-process (embedded mode), so no separate API server is needed. If the saved models can't be loaded on the server, it retrains them automatically on first start.
+
 
 Step-by-step guides for **Render** (blueprint `render.yaml`, two free services) and **Hugging Face Spaces** (single container, `deploy/huggingface/`) are in [docs/deployment.md](docs/deployment.md). The Docker image trains the models at build time if none are present, so pickled models always match the installed library versions.
 
