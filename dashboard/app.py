@@ -50,6 +50,21 @@ DISPLAY = "'Barlow Condensed', Barlow, system-ui, sans-serif"
 st.set_page_config(page_title="Arrivo – ETA & Delay Risk", page_icon="🚚", layout="wide",
                    initial_sidebar_state="collapsed")
 
+# ---------------------------------------------------------------------------
+# Light / dark theme (toggle next to the page tabs; light is the default)
+# ---------------------------------------------------------------------------
+st.session_state.setdefault("dark", False)
+DARK = bool(st.session_state["dark"])
+THEMES = {
+    False: dict(BG=PAPER, CARD="#FFFFFF", LINE=LINE, TEXT=ASPHALT, MUTED=ASPHALT_SOFT, GRID="#ECEEE9",
+                BAND=ASPHALT, INPUT="#F0F2F6", MAP="carto-positron"),
+    True: dict(BG="#1A1E23", CARD="#252A31", LINE="#3A414A", TEXT="#E9EBEE", MUTED="#A8B0B9", GRID="#343B44",
+               BAND="#2E343C", INPUT="#2F353D", MAP="carto-darkmatter"),
+}
+T = THEMES[DARK]
+BG, CARD, TEXT, MUTED, GRID = T["BG"], T["CARD"], T["TEXT"], T["MUTED"], T["GRID"]
+LINE = T["LINE"]
+
 st.markdown(f"""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&display=swap');
@@ -57,16 +72,16 @@ st.markdown(f"""
 html, body, [class*="css"], .stMarkdown, .stText, button, input, select, textarea {{
   font-family: {FONT};
 }}
-.stApp {{ background: {PAPER}; }}
+.stApp {{ background: {BG}; }}
 [data-testid="stMain"], section.main {{ overflow-x: hidden; }}
 .block-container {{ padding-top: 1.2rem; padding-bottom: 3rem; max-width: 1280px; }}
-h1, h2, h3, h4 {{ font-family: {DISPLAY}; letter-spacing: 0.01em; color: {ASPHALT}; }}
+h1, h2, h3, h4 {{ font-family: {DISPLAY}; letter-spacing: 0.01em; color: {TEXT}; }}
 h2 {{ font-weight: 700; }}
 header[data-testid="stHeader"] {{ background: transparent; }}
 
 /* ---------- top band ---------- */
 .arv-band {{
-  background: {ASPHALT}; color: #fff; border-radius: 14px; padding: 22px 28px 26px;
+  background: {T["BAND"]}; color: #fff; border-radius: 14px; padding: 22px 28px 26px; border: 1px solid {LINE};
   position: relative; overflow: hidden; margin-bottom: 18px;
 }}
 .arv-band::after {{             /* lane marking */
@@ -105,31 +120,31 @@ header[data-testid="stHeader"] {{ background: transparent; }}
 .road .early {{ position: absolute; top: 0; bottom: 0; background: rgba(46,139,87,.55); }}
 .road .dot {{ position: absolute; top: 19px; width: 16px; height: 16px; border-radius: 50%;
   border: 3px solid #fff; transform: translateX(-50%); }}
-.road .lbl {{ position: absolute; white-space: nowrap; font-size: .82rem; color: {ASPHALT}; }}
+.road .lbl {{ position: absolute; white-space: nowrap; font-size: .82rem; color: {TEXT}; }}
 .road .lbl.top {{ top: -24px; }}
 .road .lbl.bottom {{ bottom: -26px; }}
 
 /* ---------- reasons ---------- */
 .reason {{ display: grid; grid-template-columns: 26px 1fr auto; gap: 10px; align-items: center;
-  background: #fff; border: 1px solid {LINE}; border-left: 6px solid var(--c); border-radius: 8px;
+  background: {CARD}; border: 1px solid {LINE}; border-left: 6px solid var(--c); border-radius: 8px;
   padding: 10px 14px; margin-bottom: 8px; }}
 .reason .ic {{ font-family: {DISPLAY}; font-weight: 700; color: var(--c); font-size: 1.3rem; }}
-.reason .tx {{ color: {ASPHALT}; }}
+.reason .tx {{ color: {TEXT}; }}
 .reason .hr {{ font-family: {DISPLAY}; font-weight: 600; font-size: 1.15rem; color: var(--c); }}
 
 .pill {{ display:inline-block; padding: 3px 14px; border-radius: 999px; color: #fff; font-weight: 600;
   font-size: .95rem; vertical-align: middle; }}
-.note {{ color: {ASPHALT_SOFT}; font-size: .9rem; }}
+.note {{ color: {MUTED}; font-size: .9rem; }}
 
 .tiles {{ display: flex; flex-wrap: wrap; gap: 12px; margin: 6px 0 14px; }}
-.tile {{ flex: 1 1 150px; background: #fff; border: 1px solid {LINE}; border-left: 6px solid {SIGN_GREEN};
-  border-radius: 10px; padding: 10px 14px; color: {ASPHALT_SOFT}; font-size: .92rem; }}
-.tile b {{ display: block; font-family: {DISPLAY}; font-size: 1.9rem; font-weight: 600; color: {ASPHALT}; }}
+.tile {{ flex: 1 1 150px; background: {CARD}; border: 1px solid {LINE}; border-left: 6px solid {SIGN_GREEN};
+  border-radius: 10px; padding: 10px 14px; color: {MUTED}; font-size: .92rem; }}
+.tile b {{ display: block; font-family: {DISPLAY}; font-size: 1.9rem; font-weight: 600; color: {TEXT}; }}
 
 /* ---------- native widgets ---------- */
-div[data-testid="stMetric"] {{ background: #fff; border: 1px solid {LINE}; border-radius: 10px; padding: 12px 16px; }}
-div[data-testid="stMetricValue"] {{ font-family: {DISPLAY}; font-weight: 600; color: {ASPHALT}; }}
-div[data-testid="stForm"] {{ background: #fff; border: 1px solid {LINE}; border-radius: 12px; }}
+div[data-testid="stMetric"] {{ background: {CARD}; border: 1px solid {LINE}; border-radius: 10px; padding: 12px 16px; }}
+div[data-testid="stMetricValue"] {{ font-family: {DISPLAY}; font-weight: 600; color: {TEXT}; }}
+div[data-testid="stForm"] {{ background: {CARD}; border: 1px solid {LINE}; border-radius: 12px; }}
 .stButton > button, .stDownloadButton > button, div[data-testid="stFormSubmitButton"] > button {{
   border-radius: 8px; font-weight: 600; }}
 div[data-testid="stFormSubmitButton"] > button {{ background: {SIGN_GREEN}; color: #fff; border: 0; padding: .5rem 1.6rem; }}
@@ -141,6 +156,45 @@ div[data-testid="stTabs"] button p {{ font-family: {DISPLAY}; font-size: 1.1rem;
   .stone {{ width: 200px; }}
   .stone .num {{ font-size: 3.4rem; }}
 }}
+</style>
+""", unsafe_allow_html=True)
+
+if DARK:
+    st.markdown(f"""
+<style>
+.stApp, .stApp p, .stApp li, .stApp label, .stApp span, .stMarkdown, [data-testid="stWidgetLabel"] p,
+[data-testid="stMetricLabel"] p, [data-testid="stCaptionContainer"] {{ color: {TEXT}; }}
+.note, .tile {{ color: {MUTED} !important; }}
+.stApp a {{ color: {YELLOW}; }}
+/* inputs, selects, date/time, number, text, file upload */
+div[data-baseweb="select"] > div, div[data-baseweb="input"], div[data-baseweb="input"] > div,
+div[data-baseweb="base-input"], .stApp input, .stApp textarea, [data-testid="stFileUploaderDropzone"] {{
+  background-color: {T["INPUT"]} !important; color: {TEXT} !important; border-color: {LINE} !important; }}
+div[data-baseweb="select"] svg, div[data-baseweb="input"] svg {{ fill: {MUTED}; }}
+div[data-baseweb="popover"] ul, div[data-baseweb="popover"] li, div[data-baseweb="menu"],
+div[data-baseweb="calendar"], div[data-baseweb="calendar"] * {{ background-color: {CARD} !important; color: {TEXT} !important; }}
+div[data-baseweb="popover"] li:hover {{ background-color: {T["INPUT"]} !important; }}
+/* buttons, segmented control, pills */
+.stButton > button, .stDownloadButton > button, [data-testid="stBaseButton-segmented_control"],
+[data-testid="stBaseButton-pills"], [data-testid="stFileUploaderDropzone"] button {{
+  background-color: {CARD}; color: {TEXT}; border-color: {LINE}; }}
+[data-testid="stBaseButton-segmented_controlActive"], [data-testid="stBaseButton-pillsActive"] {{
+  background-color: {SIGN_GREEN}; color: #fff; border-color: {SIGN_GREEN}; }}
+.stButton > button[kind="primary"] {{ background-color: {SIGN_GREEN}; border-color: {SIGN_GREEN}; color: #fff; }}
+/* expanders, tabs, alerts */
+[data-testid="stExpander"] details {{ background: {CARD}; border-color: {LINE}; }}
+[data-testid="stExpander"] summary:hover {{ color: {YELLOW}; }}
+div[data-testid="stTabs"] [data-baseweb="tab-list"] {{ border-bottom-color: {LINE}; }}
+div[data-testid="stTabs"] button p {{ color: {MUTED}; }}
+div[data-testid="stTabs"] button[aria-selected="true"] p {{ color: {YELLOW}; }}
+div[data-baseweb="tab-highlight"] {{ background-color: {YELLOW}; }}
+[data-testid="stAlert"] {{ background-color: {T["INPUT"]}; }}
+[data-testid="stAlert"] * {{ color: {TEXT} !important; }}
+/* tables: Streamlit draws them on a canvas, so invert them into a dark version */
+[data-testid="stDataFrame"] {{ filter: invert(0.9) hue-rotate(180deg); }}
+[data-testid="stImage"] img {{ border-radius: 8px; }}
+[data-testid="stJson"] {{ background: {CARD}; }}
+header[data-testid="stHeader"] * {{ color: {TEXT}; }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -168,13 +222,13 @@ def get_metrics() -> dict:
 def style_fig(fig: go.Figure, height: int = 320, legend: bool = False) -> go.Figure:
     fig.update_layout(
         height=height, margin=dict(l=10, r=10, t=40, b=10), paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="#fff", font=dict(family=FONT, color=ASPHALT, size=13),
-        title_font=dict(family=DISPLAY, size=19, color=ASPHALT), showlegend=legend,
+        plot_bgcolor=CARD, font=dict(family=FONT, color=TEXT, size=13),
+        title_font=dict(family=DISPLAY, size=19, color=TEXT), showlegend=legend,
         legend=dict(orientation="h", y=-0.2),
-        hoverlabel=dict(bgcolor="#fff", font_family=FONT),
+        hoverlabel=dict(bgcolor=CARD, font_family=FONT, font_color=TEXT),
     )
-    fig.update_xaxes(gridcolor="#ECEEE9", zeroline=False)
-    fig.update_yaxes(gridcolor="#ECEEE9", zeroline=False)
+    fig.update_xaxes(gridcolor=GRID, zeroline=False, linecolor=LINE)
+    fig.update_yaxes(gridcolor=GRID, zeroline=False, linecolor=LINE)
     return fig
 
 
@@ -233,8 +287,8 @@ def gauge(prob: float, bands: dict) -> go.Figure:
     steps = [{"range": [lo * 100, min(hi, 1) * 100], "color": RISK_COLORS[n] + "40"} for n, (lo, hi) in bands.items()]
     fig = go.Figure(go.Indicator(
         mode="gauge+number", value=prob * 100,
-        number={"suffix": "%", "font": {"size": 36, "family": DISPLAY, "color": ASPHALT}},
-        gauge={"axis": {"range": [0, 100], "tickcolor": ASPHALT_SOFT}, "bar": {"color": ASPHALT, "thickness": 0.28},
+        number={"suffix": "%", "font": {"size": 36, "family": DISPLAY, "color": TEXT}},
+        gauge={"axis": {"range": [0, 100], "tickcolor": MUTED}, "bar": {"color": TEXT, "thickness": 0.28},
                "steps": steps, "borderwidth": 0}))
     style_fig(fig, height=210)
     fig.update_layout(margin=dict(l=30, r=30, t=10, b=0), title=None)
@@ -252,7 +306,7 @@ def route_map(rows: list[dict], height: int = 420) -> go.Figure:
         label = f"{r['origin_city']} → {r['destination_city']}"
         fig.add_trace(Scatter(lat=[olat, dlat], lon=[olon, dlon], mode="lines",
                               line=dict(width=3, color=c), hoverinfo="skip", showlegend=False))
-        fig.add_trace(Scatter(lat=[olat], lon=[olon], mode="markers", marker=dict(size=9, color=ASPHALT),
+        fig.add_trace(Scatter(lat=[olat], lon=[olon], mode="markers", marker=dict(size=9, color=TEXT),
                               hovertemplate=f"{r['origin_city']} (origin)<extra></extra>", showlegend=False))
         fig.add_trace(Scatter(lat=[dlat], lon=[dlon], mode="markers", marker=dict(size=13, color=c),
                               hovertemplate=(f"<b>{label}</b><br>Risk {r['delay_probability']:.0%} ({r['risk_level']})"
@@ -262,7 +316,7 @@ def route_map(rows: list[dict], height: int = 420) -> go.Figure:
     center = dict(lat=(min(lats) + max(lats)) / 2, lon=(min(lons) + max(lons)) / 2)
     span = max(max(lats) - min(lats), max(lons) - min(lons), 4)
     zoom = 5.6 if span < 6 else 4.6 if span < 12 else 3.7
-    layout_map = dict(style="carto-positron", center=center, zoom=zoom)
+    layout_map = dict(style=T["MAP"], center=center, zoom=zoom)
     if new_api:
         fig.update_layout(map=layout_map)
     else:
@@ -339,8 +393,8 @@ def whatif_chart(df: pd.DataFrame, title: str, xlab: str, marker_x: float, bands
     fig = go.Figure()
     for n, (lo, hi) in bands.items():
         fig.add_hrect(y0=lo * 100, y1=min(hi, 1) * 100, fillcolor=RISK_COLORS[n], opacity=0.08, line_width=0)
-    fig.add_trace(go.Scatter(x=df.x, y=df.risk * 100, mode="lines+markers", line=dict(color=ASPHALT, width=3, shape="spline"),
-                             marker=dict(size=8, color=ASPHALT), customdata=df.eta,
+    fig.add_trace(go.Scatter(x=df.x, y=df.risk * 100, mode="lines+markers", line=dict(color=TEXT, width=3, shape="spline"),
+                             marker=dict(size=8, color=TEXT), customdata=df.eta,
                              hovertemplate=f"{xlab} %{{x}}<br>Risk %{{y:.0f}}%<br>ETA %{{customdata:.1f}} hrs<extra></extra>"))
     fig.add_vline(x=marker_x, line=dict(color=YELLOW, width=3, dash="dot"))
     fig.update_yaxes(range=[0, 100], ticksuffix="%", title="Delay risk")
@@ -521,7 +575,7 @@ def page_operations():
     with a:
         counts = df.Risk.value_counts().reindex(["High", "Medium", "Low"]).fillna(0)
         fig = go.Figure(go.Pie(labels=counts.index, values=counts.values, hole=0.62, sort=False,
-                               marker=dict(colors=[RISK_COLORS[x] for x in counts.index], line=dict(color="#fff", width=3)),
+                               marker=dict(colors=[RISK_COLORS[x] for x in counts.index], line=dict(color=CARD, width=3)),
                                hovertemplate="%{label} risk: %{value} shipments<extra></extra>", textinfo="value"))
         fig.update_layout(title="Shipments by risk", annotations=[dict(text=f"<b>{len(df)}</b><br>trucks", showarrow=False,
                                                                        font=dict(family=DISPLAY, size=22))])
@@ -680,6 +734,10 @@ except Exception as e:  # noqa: BLE001
     st.stop()
 
 band(metrics)
-page = st.segmented_control("Section", list(PAGES), default="Check a shipment", label_visibility="collapsed",
-                            key="nav")
+nav_col, theme_col = st.columns([5, 1.1], vertical_alignment="center")
+with nav_col:
+    page = st.segmented_control("Section", list(PAGES), default="Check a shipment", label_visibility="collapsed",
+                                key="nav")
+with theme_col:
+    st.toggle("🌙 Dark mode", key="dark")
 PAGES[page or "Check a shipment"]()
