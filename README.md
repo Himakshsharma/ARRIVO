@@ -220,6 +220,8 @@ Unknown cities work too if you pass `origin_lat/origin_lon` (or `destination_lat
 
 **Live (Streamlit Community Cloud):** https://arrivo-eta.streamlit.app, deployed from `dashboard/app.py` on Python 3.12. On Streamlit Cloud the dashboard runs the models in-process (embedded mode), so no separate API server is needed. If the saved models can't be loaded on the server, it retrains them automatically on first start.
 
+**Always on:** the free Streamlit plan sleeps apps after about 12 hours without visitors. `.github/workflows/keep-awake.yml` opens the app in a headless browser every 6 hours (waking it if needed) and makes a monthly heartbeat commit so GitHub never pauses the schedule. You can also run it by hand from the repo's **Actions** tab, under *Keep Arrivo awake → Run workflow*.
+
 
 Step-by-step guides for **Render** (blueprint `render.yaml`, two free services) and **Hugging Face Spaces** (single container, `deploy/huggingface/`) are in [docs/deployment.md](docs/deployment.md). The Docker image trains the models at build time if none are present, so pickled models always match the installed library versions.
 
