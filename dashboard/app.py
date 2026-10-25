@@ -233,8 +233,8 @@ def style_fig(fig: go.Figure, height: int = 320, legend: bool = False) -> go.Fig
         legend=dict(orientation="h", y=-0.2),
         hoverlabel=dict(bgcolor=CARD, font_family=FONT, font_color=TEXT),
     )
-    fig.update_xaxes(gridcolor=GRID, zeroline=False, linecolor=LINE)
-    fig.update_yaxes(gridcolor=GRID, zeroline=False, linecolor=LINE)
+    fig.update_xaxes(gridcolor=GRID, zeroline=False, linecolor=LINE, automargin=True)
+    fig.update_yaxes(gridcolor=GRID, zeroline=False, linecolor=LINE, automargin=True)
     return fig
 
 
