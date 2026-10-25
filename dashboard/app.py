@@ -58,6 +58,7 @@ html, body, [class*="css"], .stMarkdown, .stText, button, input, select, textare
   font-family: {FONT};
 }}
 .stApp {{ background: {PAPER}; }}
+[data-testid="stMain"], section.main {{ overflow-x: hidden; }}
 .block-container {{ padding-top: 1.2rem; padding-bottom: 3rem; max-width: 1280px; }}
 h1, h2, h3, h4 {{ font-family: {DISPLAY}; letter-spacing: 0.01em; color: {ASPHALT}; }}
 h2 {{ font-weight: 700; }}
@@ -102,11 +103,11 @@ header[data-testid="stHeader"] {{ background: transparent; }}
   background: repeating-linear-gradient(90deg, #fff 0 20px, transparent 20px 36px); opacity: .55; }}
 .road .late {{ position: absolute; top: 0; bottom: 0; background: rgba(200,55,45,.55); }}
 .road .early {{ position: absolute; top: 0; bottom: 0; background: rgba(46,139,87,.55); }}
-.pin {{ position: absolute; top: -26px; transform: translateX(-50%); text-align: center; white-space: nowrap; }}
-.pin .dot {{ width: 14px; height: 14px; border-radius: 50%; border: 3px solid #fff; margin: 0 auto; }}
-.pin .lbl {{ font-size: .8rem; color: {ASPHALT}; margin-bottom: 4px; }}
-.pin.below {{ top: auto; bottom: -40px; }}
-.pin.below .lbl {{ margin: 4px 0 0; }}
+.road .dot {{ position: absolute; top: 19px; width: 16px; height: 16px; border-radius: 50%;
+  border: 3px solid #fff; transform: translateX(-50%); }}
+.road .lbl {{ position: absolute; white-space: nowrap; font-size: .82rem; color: {ASPHALT}; }}
+.road .lbl.top {{ top: -24px; }}
+.road .lbl.bottom {{ bottom: -26px; }}
 
 /* ---------- reasons ---------- */
 .reason {{ display: grid; grid-template-columns: 26px 1fr auto; gap: 10px; align-items: center;
@@ -214,12 +215,12 @@ def road_strip(pred: dict):
     st.markdown(f"""
 <div class="road">
   <div class="{gap_cls}" style="left:{lo}%;width:{hi - lo}%"></div>
-  <div class="pin" style="left:2%"><div class="lbl">Dispatched {pd.Timestamp(pred['dispatch_time']):%d %b %H:%M}</div>
-       <div class="dot" style="background:{ASPHALT_SOFT}"></div></div>
-  <div class="pin" style="left:{p}%"><div class="lbl">Planned {pd.Timestamp(pred['planned_arrival']):%d %b %H:%M}</div>
-       <div class="dot" style="background:{YELLOW}"></div></div>
-  <div class="pin below" style="left:{q}%"><div class="dot" style="background:{risk_c}"></div>
-       <div class="lbl"><b>Predicted {pd.Timestamp(pred['expected_arrival']):%d %b %H:%M}</b></div></div>
+  <div class="dot" style="left:0.8%;background:{ASPHALT_SOFT}"></div>
+  <div class="dot" style="left:{p}%;background:{YELLOW}"></div>
+  <div class="dot" style="left:{q}%;background:{risk_c}"></div>
+  <div class="lbl top" style="left:0%">Dispatched {pd.Timestamp(pred['dispatch_time']):%d %b %H:%M}</div>
+  <div class="lbl top" style="left:{p}%;transform:translateX(-{p}%)">Planned {pd.Timestamp(pred['planned_arrival']):%d %b %H:%M}</div>
+  <div class="lbl bottom" style="left:{q}%;transform:translateX(-{q}%)"><b>Predicted {pd.Timestamp(pred['expected_arrival']):%d %b %H:%M}</b></div>
 </div>""", unsafe_allow_html=True)
 
 
@@ -238,7 +239,8 @@ def gauge(prob: float, bands: dict) -> go.Figure:
 def route_map(rows: list[dict], height: int = 420) -> go.Figure:
     """Interactive map of routes (no API key needed: CARTO tiles)."""
     fig = go.Figure()
-    Scatter = getattr(go, "Scattermap", None) or go.Scattermapbox
+    new_api = hasattr(go, "Scattermap")            # plotly >= 5.24 (MapLibre, no token needed)
+    Scatter = go.Scattermap if new_api else go.Scattermapbox
     for r in rows:
         (olat, olon), (dlat, dlon) = r["route"]["origin"], r["route"]["destination"]
         c = RISK_COLORS[r["risk_level"]]
@@ -256,10 +258,10 @@ def route_map(rows: list[dict], height: int = 420) -> go.Figure:
     span = max(max(lats) - min(lats), max(lons) - min(lons), 4)
     zoom = 5.6 if span < 6 else 4.6 if span < 12 else 3.7
     layout_map = dict(style="carto-positron", center=center, zoom=zoom)
-    if Scatter is go.Scattermapbox:
-        fig.update_layout(mapbox=layout_map)
-    else:
+    if new_api:
         fig.update_layout(map=layout_map)
+    else:
+        fig.update_layout(mapbox=layout_map)
     fig.update_layout(height=height, margin=dict(l=0, r=0, t=0, b=0), paper_bgcolor="rgba(0,0,0,0)")
     return fig
 
