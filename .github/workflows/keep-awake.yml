@@ -1,0 +1,44 @@
+# Keeps the free Streamlit deployment running.
+# - Every 6 hours: visit the app in a real (headless) browser so it never hits
+#   Streamlit's ~12-hour no-traffic sleep, and wake it if it did sleep.
+# - On the 1st of each month: push a tiny heartbeat commit, because GitHub
+#   pauses scheduled workflows in repos with no activity for 60 days.
+name: Keep Arrivo awake
+
+on:
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install headless browser
+        run: |
+          npm init -y > /dev/null
+          npm install playwright@1.48.2
+          npx playwright install --with-deps chromium
+      - name: Visit the app
+        run: node scripts/keep_awake.mjs
+        env:
+          APP_URL: https://arrivo-eta.streamlit.app/
+      - name: Monthly heartbeat commit
+        if: github.event_name == 'schedule'
+        run: |
+          if [ "$(date -u +%d)" = "01" ] && [ "$(date -u +%H)" -lt 6 ]; then
+            date -u +"%Y-%m-%dT%H:%M:%SZ" > .github/heartbeat
+            git config user.name "github-actions[bot]"
+            git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+            git add .github/heartbeat
+            git commit -m "chore: monthly heartbeat (keeps scheduled workflow active)"
+            git push
+          fi
