@@ -121,6 +121,11 @@ header[data-testid="stHeader"] {{ background: transparent; }}
   font-size: .95rem; vertical-align: middle; }}
 .note {{ color: {ASPHALT_SOFT}; font-size: .9rem; }}
 
+.tiles {{ display: flex; flex-wrap: wrap; gap: 12px; margin: 6px 0 14px; }}
+.tile {{ flex: 1 1 150px; background: #fff; border: 1px solid {LINE}; border-left: 6px solid {SIGN_GREEN};
+  border-radius: 10px; padding: 10px 14px; color: {ASPHALT_SOFT}; font-size: .92rem; }}
+.tile b {{ display: block; font-family: {DISPLAY}; font-size: 1.9rem; font-weight: 600; color: {ASPHALT}; }}
+
 /* ---------- native widgets ---------- */
 div[data-testid="stMetric"] {{ background: #fff; border: 1px solid {LINE}; border-radius: 10px; padding: 12px 16px; }}
 div[data-testid="stMetricValue"] {{ font-family: {DISPLAY}; font-weight: 600; color: {ASPHALT}; }}
@@ -478,9 +483,9 @@ def page_operations():
                 "so you know which ones to call about first.</p>", unsafe_allow_html=True)
     c1, c2, c3 = st.columns([2.2, 1, 1])
     up = c1.file_uploader("Dispatch list (CSV with origin_city, destination_city, dispatch_time)", type="csv")
-    use_sample = c2.button("Load the sample day", type="primary", width="stretch") if SAMPLE_BATCH.exists() else False
+    use_sample = c2.button("Load sample day", type="primary", width="stretch") if SAMPLE_BATCH.exists() else False
     if SAMPLE_BATCH.exists():
-        c3.download_button("Download sample CSV", SAMPLE_BATCH.read_bytes(), "sample_batch.csv", "text/csv",
+        c3.download_button("Sample CSV", SAMPLE_BATCH.read_bytes(), "sample_batch.csv", "text/csv",
                            width="stretch")
 
     content = up.getvalue() if up is not None else (SAMPLE_BATCH.read_bytes() if use_sample else None)
@@ -562,31 +567,37 @@ def page_insights():
     st.markdown("## How good are the predictions?")
     st.markdown(f"<p class='note'>Measured on {m['split']['test'][2]:,} shipments from the most recent six months, "
                 f"which the models never saw during training.</p>", unsafe_allow_html=True)
-    c = st.columns(5)
-    c[0].metric("Average ETA error", f"{eta['test_metrics']['MAE']:.1f} hrs")
-    c[1].metric("ETA within ±10%", f"{eta['test_metrics']['within_10pct_%']:.0f}%")
-    c[2].metric("Delay ROC-AUC", f"{dly['test_metrics']['ROC_AUC']:.3f}")
-    c[3].metric("Late trucks caught", f"{dly['test_metrics']['Recall']:.0%}")
-    c[4].metric("Flags that were right", f"{dly['test_metrics']['Precision']:.0%}")
+    tiles = [(f"{eta['test_metrics']['MAE']:.1f} hrs", "average ETA error"),
+             (f"{eta['test_metrics']['within_10pct_%']:.0f}%", "of ETAs within ±10%"),
+             (f"{dly['test_metrics']['ROC_AUC']:.3f}", "delay-risk ROC-AUC"),
+             (f"{dly['test_metrics']['Recall']:.0%}", "of late trucks caught"),
+             (f"{dly['test_metrics']['Precision']:.0%}", "of late flags were right")]
+    st.markdown('<div class="tiles">' + "".join(f'<div class="tile"><b>{v}</b>{k}</div>' for v, k in tiles)
+                + "</div>", unsafe_allow_html=True)
 
     t1, t2, t3, t4 = st.tabs(["Model comparison", "What drives delays", "Can you trust the risk levels?", "Data exploration"])
     with t1:
         e = pd.DataFrame(m["eta_model_comparison"]); d = pd.DataFrame(m["delay_model_comparison"])
-        a, b = st.columns(2, gap="large")
+        nice = lambda x: (x.replace(" (sklearn)", "").replace("GradientBoosting", "Gradient Boosting")  # noqa: E731
+                          .replace("RandomForest", "Random Forest").replace("LinearRegression", "Linear Regression")
+                          .replace("LogisticRegression", "Logistic Regression").replace(" + calibrated", ", calibrated")
+                          .replace("Planner's ETA (no ML)", "Planner's ETA"))
+        e["label"], d["label"] = e.model.map(nice), d.model.map(nice)
+        a, b = st.container(), st.container()
         colors = [YELLOW if "Planner" in x else (SIGN_GREEN if x.startswith(eta["name"]) else "#9AA3AD") for x in e.model]
-        fig = go.Figure(go.Bar(x=e.test_MAE, y=e.model, orientation="h", marker_color=colors,
+        fig = go.Figure(go.Bar(x=e.test_MAE, y=e.label, orientation="h", marker_color=colors,
                                text=[f"{v:.2f} h" for v in e.test_MAE], textposition="outside",
                                hovertemplate="%{y}<br>Test MAE %{x:.2f} hrs<extra></extra>"))
         fig.update_layout(title="ETA error by model (lower is better)")
         fig.update_xaxes(title="Mean absolute error, hours", range=[0, e.test_MAE.max() * 1.25])
-        a.plotly_chart(style_fig(fig, 330), width="stretch", config={"displayModeBar": False})
+        a.plotly_chart(style_fig(fig, 300), width="stretch", config={"displayModeBar": False})
         colors = [SIGN_GREEN if x.startswith(dly["name"]) else "#9AA3AD" for x in d.model]
-        fig = go.Figure(go.Bar(x=d.test_ROC_AUC, y=d.model, orientation="h", marker_color=colors,
+        fig = go.Figure(go.Bar(x=d.test_ROC_AUC, y=d.label, orientation="h", marker_color=colors,
                                text=[f"{v:.3f}" for v in d.test_ROC_AUC], textposition="outside",
                                hovertemplate="%{y}<br>Test ROC-AUC %{x:.3f}<extra></extra>"))
         fig.update_layout(title="Delay-risk ranking quality (higher is better)")
         fig.update_xaxes(title="ROC-AUC", range=[0.5, 1])
-        b.plotly_chart(style_fig(fig, 330), width="stretch", config={"displayModeBar": False})
+        b.plotly_chart(style_fig(fig, 280), width="stretch", config={"displayModeBar": False})
         st.markdown(f"<p class='note'>Yellow is the planner's own ETA with no machine learning. Green marks the "
                     f"models in use: <b>{eta['name']}</b> for ETA and <b>{dly['name']}</b> for delay risk "
                     f"(decision threshold {dly['threshold']:.2f}).</p>", unsafe_allow_html=True)
