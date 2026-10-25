@@ -178,8 +178,11 @@ div[data-baseweb="popover"] li:hover {{ background-color: {T["INPUT"]} !importan
 .stButton > button, .stDownloadButton > button, [data-testid="stBaseButton-segmented_control"],
 [data-testid="stBaseButton-pills"], [data-testid="stFileUploaderDropzone"] button {{
   background-color: {CARD}; color: {TEXT}; border-color: {LINE}; }}
-[data-testid="stBaseButton-segmented_controlActive"], [data-testid="stBaseButton-pillsActive"] {{
-  background-color: {SIGN_GREEN}; color: #fff; border-color: {SIGN_GREEN}; }}
+[data-testid="stButtonGroup"] button {{ background-color: {CARD} !important; border-color: {LINE} !important; }}
+[data-testid="stButtonGroup"] button p {{ color: {TEXT} !important; }}
+[data-testid="stButtonGroup"] button[aria-checked="true"] {{ background-color: {SIGN_GREEN} !important;
+  border-color: {SIGN_GREEN} !important; }}
+[data-testid="stButtonGroup"] button[aria-checked="true"] p {{ color: #fff !important; }}
 .stButton > button[kind="primary"] {{ background-color: {SIGN_GREEN}; border-color: {SIGN_GREEN}; color: #fff; }}
 /* expanders, tabs, alerts */
 [data-testid="stExpander"] details {{ background: {CARD}; border-color: {LINE}; }}
