@@ -14,6 +14,14 @@ git push -u origin main
 
 `data/raw/` is git-ignored. The Docker build regenerates the synthetic dataset and trains the models (~3–8 minutes) so the saved models always match the library versions inside the image. To deploy models trained on the **Kaggle** file instead, remove the two `models/...` lines from `.dockerignore` and commit `models/` after training locally with the same library versions as the image.
 
+## Option 0 — Streamlit Community Cloud (current live deployment)
+
+1. share.streamlit.io → **Create app** → **Deploy a public app from GitHub**.
+2. Repository `Himakshsharma/ARRIVO`, branch `main`, main file `dashboard/app.py`.
+3. **Advanced settings** → Python 3.12 → **Deploy**.
+
+The dashboard runs the models in-process, so no separate API service is needed. Every push to `main` redeploys automatically, and `.github/workflows/keep-awake.yml` keeps the app from sleeping.
+
 ## Option A — Render (API + dashboard as two services)
 
 1. Render dashboard → **New + → Blueprint** → select your repo. Render reads `render.yaml` and proposes `arrivo-api` and `arrivo-dashboard`.

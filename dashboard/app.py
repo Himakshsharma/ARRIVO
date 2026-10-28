@@ -730,7 +730,7 @@ Arrivo predicts three things for every truck at the moment it's dispatched:
 It looks only at what's known at dispatch: the route and distance, the dispatch hour and day, the vehicle and cargo,
 weather at both ends, Indian festivals and holidays, the monsoon, and each route's and supplier's past record.
 
-Built with scikit-learn, SHAP, FastAPI and Streamlit. Source code:
+Built with scikit-learn, SHAP, FastAPI and Streamlit (version 1.1). Source code:
 [github.com/Himakshsharma/ARRIVO](https://github.com/Himakshsharma/ARRIVO)
 """)
     with st.expander("System status"):
