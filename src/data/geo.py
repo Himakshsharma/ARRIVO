@@ -1,11 +1,4 @@
-"""
-Static reference data: Indian logistics hubs, regional climate normals and
-the Indian festival calendar.
-
-Why keep this in code instead of a CSV?
-  It is small, it never changes during a run, and having it importable makes
-  the API able to validate city names instantly.
-"""
+"""Static reference data: logistics hubs, regional climate normals and the festival calendar."""
 from __future__ import annotations
 
 import hashlib
@@ -16,7 +9,7 @@ import numpy as np
 
 # ---------------------------------------------------------------------------
 # Logistics hubs: name -> (lat, lon, region, is_hilly, traffic_weight)
-# traffic_weight ~ relative freight volume (used only by the synthetic generator)
+# traffic_weight: relative freight volume, used by the synthetic generator
 # ---------------------------------------------------------------------------
 HUBS: dict[str, tuple[float, float, str, int, int]] = {
     "Delhi": (28.61, 77.21, "North", 0, 10),
@@ -71,9 +64,8 @@ MONTHLY_TEMP_C = {
 }
 
 # ---------------------------------------------------------------------------
-# Indian festival calendar (major freight-disrupting festivals).
-# The `holidays` library covers gazetted national holidays; it does NOT know
-# that freight slows down for ~a week around Diwali, so we keep our own list.
+# Freight-disrupting festivals. The `holidays` package only covers gazetted
+# holidays, not the multi-day slowdown around them.
 # ---------------------------------------------------------------------------
 FESTIVALS: dict[str, list[str]] = {
     "Diwali":           ["2023-11-12", "2024-10-31", "2025-10-20", "2026-11-08"],
@@ -84,7 +76,7 @@ FESTIVALS: dict[str, list[str]] = {
     "Pongal/Sankranti": ["2023-01-15", "2024-01-15", "2025-01-14", "2026-01-14"],
     "Christmas":        ["2023-12-25", "2024-12-25", "2025-12-25", "2026-12-25"],
 }
-# How many days either side of the festival freight is disrupted
+# Disruption window (days either side of the festival)
 FESTIVAL_WINDOW_DAYS = {"Diwali": 5, "Dussehra": 3, "Holi": 2, "Ganesh Chaturthi": 3,
                         "Eid al-Fitr": 2, "Pongal/Sankranti": 2, "Christmas": 2}
 
@@ -134,7 +126,7 @@ def climatology_weather(lat: float, lon: float, region: str, hilly: int, day: da
     rng = _stable_rng(round(lat, 1), round(lon, 1), day.isoformat())
     m = day.month - 1
     monthly = MONTHLY_RAIN_MM[region][m] * (1.3 if hilly else 1.0)
-    p_rain = monthly / (monthly + 60.0)                    # wetter month -> more rainy days
+    p_rain = monthly / (monthly + 60.0)                    # probability of a rainy day
     mean_amount = monthly / max(30 * p_rain, 1e-6)         # mm on a rainy day
     rain = float(rng.exponential(mean_amount)) if rng.random() < p_rain else 0.0
     temp = MONTHLY_TEMP_C[region][m] - (12 if hilly else 0) + float(rng.normal(0, 2.0))

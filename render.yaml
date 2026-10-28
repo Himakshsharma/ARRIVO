@@ -8,7 +8,7 @@ services:
     dockerCommand: scripts/start_api.sh
     healthCheckPath: /health
     envVars:
-      - key: ANTHROPIC_API_KEY      # optional, enables AI-written customer alerts
+      - key: ARRIVO_LLM_API_KEY     # optional, enables LLM-written customer alerts
         sync: false
   - type: web
     name: arrivo-dashboard

@@ -1,14 +1,8 @@
-"""
-Delay classification: probability that a shipment arrives late.
+"""Train and select the delay classifier.
 
-Class imbalance (~1 late for every 2 on-time):
-  * every model is trained with class weights / scale_pos_weight, so the
-    minority "late" class is not ignored;
-  * the decision threshold is tuned on validation to maximise F1 instead of
-    blindly using 0.5;
-  * class weighting distorts raw probabilities, so we re-calibrate them on the
-    validation set (Platt / sigmoid scaling). A "70% risk" then really means
-    roughly 7 in 10 such shipments are late - important for the risk bands.
+Every candidate uses class weighting. The selected model is tuned, then
+calibrated (Platt scaling) on the validation split, where the F1-optimal
+decision threshold is also chosen.
 """
 from __future__ import annotations
 
@@ -87,9 +81,9 @@ def run(train: pd.DataFrame, val: pd.DataFrame, test: pd.DataFrame, tracker: Tra
         log.info("Tuning did not help on validation -> keeping default parameters")
         final, best_params = fitted[best_name], {}
 
-    set_linear_background(final, Xtr)   # needed to explain a linear model
+    set_linear_background(final, Xtr)
 
-    # Calibrate probabilities + choose threshold, both on VALIDATION only
+    # Calibration and threshold selection use the validation split only
     calibrated = calibrate(final, Xva, yva)
     pv = calibrated.predict_proba(Xva)[:, 1]
     threshold = best_f1_threshold(yva, pv)
@@ -103,7 +97,7 @@ def run(train: pd.DataFrame, val: pd.DataFrame, test: pd.DataFrame, tracker: Tra
                     {**{f"val_{k}": v for k, v in mv.items()}, **{f"test_{k}": v for k, v in mt.items()}},
                     {"task": "delay", "final": "true"})
 
-    # Calibration check: mean predicted risk vs actual late rate per risk band
+    # Per-band calibration on the test split
     bands = pd.cut(pt, [b[0] for b in config.RISK_BANDS.values()] + [1.01],
                    labels=list(config.RISK_BANDS), right=False)
     band_table = (pd.DataFrame({"band": bands, "pred": pt, "late": yte.values})

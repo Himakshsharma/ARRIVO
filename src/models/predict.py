@@ -1,8 +1,6 @@
-"""
-Inference: turn raw shipment details into ETA, delay risk and top reasons.
+"""Inference: shipment details in, ETA, delay risk and top reasons out.
 
-The API, the dashboard and the batch scorer all call `ArrivoPredictor`, and it
-re-uses the exact feature code from training (src/features, src/data/enrich).
+Uses the same feature code as training (``src.features`` and ``src.data.enrich``).
 """
 from __future__ import annotations
 
@@ -39,8 +37,7 @@ class ArrivoPredictor:
         self.delay = joblib.load(models_dir / config.DELAY_MODEL_FILE.name)
         self.history = joblib.load(models_dir / config.ROUTE_STATS_FILE.name)
         self.card = json.loads((models_dir / config.MODEL_CARD_FILE.name).read_text())
-        # A model trained on the synthetic dataset lives in a "synthetic weather" world,
-        # so we must feed it the same climatology weather it was trained with.
+        # Models trained on synthetic data expect climatology weather, not live observations.
         default_live = self.card.get("data_source", "synthetic") != "synthetic"
         self.live = os.getenv("ARRIVO_LIVE_ENRICHMENT", str(int(default_live))) == "1"
 
@@ -59,7 +56,7 @@ class ArrivoPredictor:
         return float(lat), float(lon), region, int(hilly)
 
     def build_frame(self, records: list[dict]) -> pd.DataFrame:
-        """Raw request records -> fully featured dataframe (same features as training)."""
+        """Build the model feature frame for raw request records."""
         rows = []
         for rec in records:
             olat, olon, oreg, ohill = self._locate(rec, "origin")
@@ -71,7 +68,7 @@ class ArrivoPredictor:
                 hav = float(haversine_km(olat, olon, dlat, dlon))
                 km = route["osrm_km"] if route["route_source"] == "osrm" else hav * self.card["median_detour_factor"]
             planned = rec.get("planned_hours")
-            if planned is None:     # no planner ETA supplied -> use the typical planned speed seen in training
+            if planned is None:     # estimate from the training-set planning rate
                 planned = km / self.card["median_planned_speed_kmph"] + self.card["median_planned_buffer_hours"]
             row = {"shipment_id": rec.get("shipment_id") or f"REQ-{len(rows) + 1}",
                    "dispatch_time": t0, "origin_city": rec.get("origin_city", "Custom"),
@@ -83,7 +80,7 @@ class ArrivoPredictor:
                    "vehicle_type": rec.get("vehicle_type") or "Unknown",
                    "material_type": rec.get("material_type") or "Unknown",
                    "supplier_id": rec.get("supplier_id") or "UNKNOWN"}
-            # Weather: use what the caller sent, otherwise look it up
+            # Caller-supplied weather overrides the lookup
             ow = weather_for_location(olat, olon, oreg, ohill, [t0.date()], self.live).iloc[0]
             dw = weather_for_location(dlat, dlon, dreg, dhill, [t0.date()], self.live).iloc[0]
             auto = {"origin_rain_mm": ow.rain_mm, "dest_rain_mm": dw.rain_mm, "origin_temp_c": ow.temp_c,

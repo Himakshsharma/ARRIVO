@@ -1,14 +1,8 @@
-"""
-External enrichment: weather (Open-Meteo), road route (OSRM) and calendar
-(holidays + Indian festivals).
+"""External enrichment: weather (Open-Meteo), road routes (OSRM) and calendar flags.
 
-Design rules
-------------
-* Every API result is cached on disk -> we never call the same request twice,
-  re-runs are fast, and we stay polite to free public APIs.
-* Every API has an offline fallback -> the pipeline and the live API never
-  crash because a third-party service is down.
-* Set ARRIVO_OFFLINE=1 to skip network calls entirely (CI, exams, no Wi-Fi).
+Every external call is cached on disk and has an offline fallback
+(climatology weather, distance-based route estimate). Set ``ARRIVO_OFFLINE=1``
+to disable network access entirely.
 """
 from __future__ import annotations
 
@@ -40,7 +34,7 @@ OPEN_METEO_FORECAST = "https://api.open-meteo.com/v1/forecast"
 OSRM_URL = "https://router.project-osrm.org/route/v1/driving/{lon1},{lat1};{lon2},{lat2}"
 DAILY_VARS = "precipitation_sum,temperature_2m_mean,wind_speed_10m_max"
 
-_network_ok: bool | None = None        # remembered after the first failure
+_network_ok: bool | None = None        # cached connectivity check
 
 
 def _online() -> bool:

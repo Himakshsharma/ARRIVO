@@ -1,10 +1,4 @@
-"""
-Feature engineering.
-
-The SAME functions are used for training and for live predictions in the API.
-That single code path is how we avoid "train/serve skew" (the model seeing
-features computed one way in training and another way in production).
-"""
+"""Feature engineering shared by training and inference."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -15,7 +9,7 @@ from sklearn.model_selection import KFold
 from src import config
 from src.data.geo import haversine_km
 
-PEAK_HOURS = {8, 9, 10, 17, 18, 19, 20}      # city rush hours -> slow exit from origin
+PEAK_HOURS = {8, 9, 10, 17, 18, 19, 20}
 
 
 def route_key(origin: pd.Series, dest: pd.Series) -> pd.Series:
@@ -23,7 +17,7 @@ def route_key(origin: pd.Series, dest: pd.Series) -> pd.Series:
 
 
 # ---------------------------------------------------------------------------
-# Row-level features (need nothing but the row itself)
+# Row-level features
 # ---------------------------------------------------------------------------
 def add_time_features(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
@@ -47,17 +41,15 @@ def add_route_features(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # ---------------------------------------------------------------------------
-# Historical aggregates (need the past -> fitted on TRAINING data only)
+# Historical aggregates (fitted on the training split only)
 # ---------------------------------------------------------------------------
 @dataclass
 class RouteHistory:
-    """
-    Remembers how each route / supplier performed in the TRAINING period.
+    """Route- and supplier-level delay statistics learned from training data.
 
-    * Smoothing (m-estimate): a route seen 3 times shouldn't get a 100% delay
-      rate just because 3/3 were late. We blend its own rate with the global
-      rate:  (sum + m * global) / (n + m).
-    * Unknown routes at prediction time simply get the global average.
+    Rates are smoothed with an m-estimate, ``(sum + m * global) / (n + m)``, so
+    rarely seen routes are pulled towards the global rate. Unseen routes and
+    suppliers fall back to the global values.
     """
     m: float = 20.0
     global_delay_rate: float = 0.0
@@ -93,11 +85,11 @@ class RouteHistory:
 
 
 def add_history_out_of_fold(train: pd.DataFrame, n_splits: int = 5) -> pd.DataFrame:
-    """
-    For TRAINING rows we compute route history *out-of-fold*: each row's stats
-    come from the other 4/5 of the training data. Otherwise a row would "see"
-    its own label inside its route average -> target leakage -> over-optimistic
-    model. Validation/test rows use stats from the whole training set.
+    """Attach route history to training rows using K-fold out-of-fold estimates.
+
+    Each row's statistics come from the other folds, so a row never contributes
+    to its own route average. Validation and test rows are transformed with a
+    ``RouteHistory`` fitted on the full training split instead.
     """
     train = train.copy()
     cols = ["route_hist_delay_rate", "route_hist_overrun_ratio", "route_hist_trips",
@@ -116,7 +108,7 @@ def add_history_out_of_fold(train: pd.DataFrame, n_splits: int = 5) -> pd.DataFr
 # Splits
 # ---------------------------------------------------------------------------
 def time_split(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """Train on the past, validate on the next period, test on the most recent period."""
+    """Chronological train / validation / test split (boundaries in ``config``)."""
     t = df.dispatch_time
     train = df[t <= config.TRAIN_END]
     val = df[(t > config.TRAIN_END) & (t <= config.VAL_END)]
@@ -130,11 +122,10 @@ def base_features(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def build_model_frames(df_enriched: pd.DataFrame):
-    """
-    Full training-time pipeline:
-      enriched data -> row features -> time split -> route history (train-only) .
-    Returns train, val, test frames and the RouteHistory fitted on train
-    (the one used to evaluate) plus one fitted on train+val (the one shipped).
+    """Build train/validation/test frames from enriched data.
+
+    Returns ``(train, val, test, history)`` where ``history`` is the
+    ``RouteHistory`` fitted on the training split.
     """
     df = base_features(df_enriched)
     train, val, test = time_split(df)
@@ -146,7 +137,7 @@ def build_model_frames(df_enriched: pd.DataFrame):
 
 
 def check_no_leakage(features: list[str]) -> None:
-    """Fail loudly if a post-delivery column sneaks into the feature list."""
+    """Raise if any post-delivery column is in the feature list."""
     leaked = set(features) & set(config.LEAKY_COLUMNS)
     if leaked:
         raise ValueError(f"Leaky features detected: {sorted(leaked)}")

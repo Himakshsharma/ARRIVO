@@ -1,15 +1,14 @@
-"""
-Phase 8 bonus: plain-English delay alerts for customers.
+"""Customer-facing delay messages.
 
-Two modes:
-* "llm"      - if the `anthropic` package is installed and ANTHROPIC_API_KEY is
-               set, Claude rewrites the prediction into a short, polite message.
-* "template" - always available, free, deterministic. Used as the fallback and
-               in tests, so the feature never breaks during a demo.
+``make_alert`` returns a message in one of two modes:
 
-Guardrail: the LLM only REPHRASES facts we give it (ETA, risk, reasons). It is
-told not to invent causes or promises, and every number it may use comes from
-our model's output.
+* ``llm``: an OpenAI-compatible chat-completions endpoint rephrases the
+  prediction. Enabled when ``ARRIVO_LLM_API_KEY`` is set; ``ARRIVO_LLM_BASE_URL``
+  and ``ARRIVO_LLM_MODEL`` select the provider and model.
+* ``template``: deterministic text, used by default and as the fallback.
+
+The model only receives facts from the prediction and is instructed not to
+add causes, compensation or guarantees.
 """
 from __future__ import annotations
 
@@ -18,9 +17,11 @@ import os
 import re
 from datetime import datetime
 
+import requests
+
 log = logging.getLogger(__name__)
 
-DEFAULT_MODEL = os.getenv("ARRIVO_LLM_MODEL", "claude-haiku-5-5")
+LLM_TIMEOUT_S = 20
 
 SYSTEM_PROMPT = (
     "You write short delivery-status messages from a logistics company to its customer. "
@@ -38,13 +39,12 @@ def _fmt_time(iso: str) -> str:
 
 
 def _plain_reason(text: str) -> str:
-    """'Heavy rain at destination (80 mm) (+6.0 hrs)' -> 'heavy rain at destination'"""
-    core = re.sub(r"\s*\([^)]*\)", "", text).strip()     # drop "(80 mm)", "(+6.0 hrs)"
+    """Strip parenthesised details and lower-case the first letter."""
+    core = re.sub(r"\s*\([^)]*\)", "", text).strip()
     return core[0].lower() + core[1:] if core else core
 
 
-# How each reason group should be phrased to a CUSTOMER (ops wording like
-# "route's track record" or "supplier reliability" is not customer-friendly).
+# Customer-facing wording for each reason group.
 CUSTOMER_PHRASES = {
     "route_history": "congestion that is common on this route",
     "supplier": "loading time at the dispatch point",
@@ -83,7 +83,6 @@ def template_alert(pred: dict, customer_name: str = "Customer") -> str:
 
 
 def llm_alert(pred: dict, customer_name: str = "Customer", tone: str = "friendly and professional") -> str:
-    import anthropic                                   # imported lazily: optional dependency
     facts = {
         "customer_name": customer_name, "shipment_id": pred.get("shipment_id"),
         "route": f"{pred['origin_city']} to {pred['destination_city']}",
@@ -93,21 +92,26 @@ def llm_alert(pred: dict, customer_name: str = "Customer", tone: str = "friendly
         "main_reasons": [customer_reason(r) for r in pred.get("top_reasons", [])
                          if r.get("risk_direction") == "raises risk"][:2],
     }
-    client = anthropic.Anthropic()
-    msg = client.messages.create(
-        model=DEFAULT_MODEL, max_tokens=300, system=SYSTEM_PROMPT.format(tone=tone),
-        messages=[{"role": "user", "content": f"Facts: {facts}\nWrite the customer message."}],
+    base_url = os.getenv("ARRIVO_LLM_BASE_URL", "https://api.openai.com/v1").rstrip("/")
+    resp = requests.post(
+        f"{base_url}/chat/completions",
+        headers={"Authorization": f"Bearer {os.environ['ARRIVO_LLM_API_KEY']}"},
+        json={"model": os.getenv("ARRIVO_LLM_MODEL", "gpt-4o-mini"), "max_tokens": 300,
+              "messages": [{"role": "system", "content": SYSTEM_PROMPT.format(tone=tone)},
+                           {"role": "user", "content": f"Facts: {facts}\nWrite the customer message."}]},
+        timeout=LLM_TIMEOUT_S,
     )
-    return "".join(b.text for b in msg.content if getattr(b, "type", "") == "text").strip()
+    resp.raise_for_status()
+    return resp.json()["choices"][0]["message"]["content"].strip()
 
 
 def make_alert(pred: dict, customer_name: str = "Customer", tone: str = "friendly and professional",
                use_llm: bool | None = None) -> dict:
-    """Return {"message", "mode"}; falls back to the template on any LLM problem."""
-    want_llm = use_llm if use_llm is not None else bool(os.getenv("ANTHROPIC_API_KEY"))
+    """Return ``{"message", "mode"}``, falling back to the template if the LLM call fails."""
+    want_llm = use_llm if use_llm is not None else bool(os.getenv("ARRIVO_LLM_API_KEY"))
     if want_llm:
         try:
             return {"message": llm_alert(pred, customer_name, tone), "mode": "llm"}
-        except Exception as exc:                       # noqa: BLE001 - never break the demo
-            log.warning("LLM alert failed (%s) -> template", exc)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("LLM alert failed, using template: %s", exc)
     return {"message": template_alert(pred, customer_name), "mode": "template"}

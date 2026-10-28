@@ -1,9 +1,4 @@
-"""
-Cleaning + target creation.
-
-Each rule is written down (and counted in a report) because "why did you drop
-those rows?" is a guaranteed viva question.
-"""
+"""Cleaning rules and target construction. Each rule is counted in the returned report."""
 from __future__ import annotations
 
 import logging
@@ -16,9 +11,9 @@ from src.data.geo import haversine_km
 
 log = logging.getLogger(__name__)
 
-MIN_SPEED_KMPH = 5      # slower than this over a whole trip = data error, not a delay
-MAX_SPEED_KMPH = 90     # Indian trucks are speed-governed at 80 km/h; faster = bad timestamps
-MAX_TRIP_HOURS = 240    # 10 days; anything longer is a stuck/abandoned booking
+MIN_SPEED_KMPH = 5      # below this, the timestamps are wrong rather than the trip late
+MAX_SPEED_KMPH = 90     # trucks are speed-governed at 80 km/h
+MAX_TRIP_HOURS = 240    # longer bookings are treated as abandoned
 
 
 def clean(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
@@ -26,17 +21,17 @@ def clean(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     rep = {"rows_in": len(df)}
     df = df.copy()
 
-    # 1. Duplicates: same booking reported twice by the GPS provider
+    # Duplicate bookings
     before = len(df)
     df = df.drop_duplicates(subset="booking_id", keep="first")
     rep["duplicates_removed"] = before - len(df)
 
-    # 2. Rows without the timestamps we need cannot have a target
+    # Rows without the timestamps needed for a target
     before = len(df)
     df = df.dropna(subset=["dispatch_time", "trip_end_time", "planned_hours"])
     rep["missing_timestamps_removed"] = before - len(df)
 
-    # 3. Missing distance -> estimate from coordinates x median detour factor
+    # Missing distance: haversine x median detour factor
     hav = haversine_km(df.origin_lat, df.origin_lon, df.dest_lat, df.dest_lon)
     detour = (df.road_distance_km / hav).replace([np.inf, -np.inf], np.nan)
     median_detour = float(detour.median()) if detour.notna().any() else 1.25
@@ -45,18 +40,18 @@ def clean(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     rep["distance_imputed"] = int(missing_dist.sum())
     rep["median_detour_factor"] = round(median_detour, 3)
 
-    # 4. Missing categoricals -> explicit "Unknown" (the model can learn from it)
+    # Missing categoricals become an explicit category
     rep["vehicle_type_imputed"] = int(df.vehicle_type.isna().sum())
     df["vehicle_type"] = df.vehicle_type.fillna("Unknown")
     df["material_type"] = df.material_type.fillna("Unknown")
     df["supplier_id"] = df.supplier_id.fillna("UNKNOWN")
 
-    # 5. Targets
+    # Targets
     df["actual_hours"] = (df.trip_end_time - df.dispatch_time).dt.total_seconds() / 3600
     df["delay_hours"] = df.actual_hours - df.planned_hours
     df["is_delayed"] = (df.delay_hours > config.DELAY_GRACE_HOURS).astype(int)
 
-    # 6. Impossible / corrupted trips (negative duration, impossible speeds, >10 days)
+    # Physically impossible trips
     speed = df.road_distance_km / df.actual_hours
     bad = ((df.actual_hours <= 0) | (df.actual_hours > MAX_TRIP_HOURS)
            | (speed < MIN_SPEED_KMPH) | (speed > MAX_SPEED_KMPH) | (df.planned_hours <= 0))

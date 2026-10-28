@@ -28,7 +28,7 @@ For each shipment, given only information available at dispatch (origin, destina
 1. **ETA**: predicted transit hours and expected arrival date/time (regression).
 2. **Delay risk**: a calibrated probability that the shipment will be late, mapped to **Low / Medium / High** (classification).
 3. **Top 3 reasons**: the factors that pushed this prediction up or down, in plain English with their effect in hours, e.g. *"Festival-season traffic (2 days from a major festival) (+1.7 hrs)"* (explainability with SHAP).
-4. **Customer alert** (bonus): a short, polite message for the customer, written by an LLM (Claude) or a fixed template.
+4. **Customer alert**: a short, polite message for the customer, written by an LLM (any OpenAI-compatible API) or a fixed template.
 
 ### 3. How it works, end to end
 
@@ -77,7 +77,7 @@ On the untouched test period, the ETA model's average error is **3.70 hours**, 2
 - **Simple when simple wins**: logistic regression beat tree ensembles for delay risk on validation, so it was kept; complexity has to earn its place.
 - **Trustworthy probabilities**: calibration makes the Low/Medium/High bands meaningful to managers.
 - **Explanations people can act on**: grouped SHAP reasons in plain English, with hours of impact.
-- **Never break the demo**: every external API is cached and has an offline fallback, the LLM alert falls back to a template, and the dashboard falls back to in-process models.
+- **Graceful degradation**: every external API is cached and has an offline fallback, the LLM alert falls back to a template, and the dashboard falls back to in-process models.
 
 ---
 
@@ -137,7 +137,7 @@ flowchart LR
   J --> P[predict.py + shap_utils.py<br/>ETA · risk · top-3 reasons]
   P --> API[FastAPI<br/>/predict · /predict/batch · /alert]
   API --> UI[Streamlit dashboard<br/>form · map · ops table · insights]
-  API --> LLM[Customer alert<br/>Claude or template]
+  API --> LLM[Customer alert<br/>LLM or template]
 ```
 
 The **same feature code** runs in training and in the API, so there is no train/serve skew.
@@ -146,7 +146,7 @@ The **same feature code** runs in training and in the API, so there is no train/
 
 ## Dataset
 
-**Recommended: Kaggle "Delivery Truck Trips Data"** (Indian truck bookings with origin/destination coordinates, planned ETA, actual arrival, distance, vehicle type, supplier, material). It is the only candidate with a *real* planned-vs-actual delay label. See [docs/phase_summaries.md](docs/phase_summaries.md#phase-1) for the comparison with the Amazon Delivery and DataCo datasets.
+**Recommended: Kaggle "Delivery Truck Trips Data"** (Indian truck bookings with origin/destination coordinates, planned ETA, actual arrival, distance, vehicle type, supplier, material). It is the only candidate with a *real* planned-vs-actual delay label. See [docs/phase_summaries.md](docs/methodology.md#phase-1) for the comparison with the Amazon Delivery and DataCo datasets.
 
 **How data is loaded**
 - Put the Kaggle file (e.g. `Delivery truck trip data.xlsx`) in `data/raw/` → it is detected automatically (any name containing "truck").
@@ -189,8 +189,9 @@ Or everything in Docker: `docker compose up --build` (API on 8000, dashboard on 
 | `ARRIVO_OFFLINE` | unset | `1` = never call Open-Meteo/OSRM (use cached data or climatology) |
 | `ARRIVO_LIVE_ENRICHMENT` | `1` for Kaggle-trained models, `0` for synthetic | look up live weather/route at prediction time |
 | `ARRIVO_API_URL` | `http://localhost:8000` | where the dashboard finds the API (falls back to in-process if unreachable) |
-| `ANTHROPIC_API_KEY` | unset | enables AI-written customer alerts (template used otherwise) |
-| `ARRIVO_LLM_MODEL` | `claude-haiku-5-5` | model for the alerts |
+| `ARRIVO_LLM_API_KEY` | unset | enables LLM-written customer alerts (template used otherwise) |
+| `ARRIVO_LLM_BASE_URL` | `https://api.openai.com/v1` | any OpenAI-compatible chat-completions endpoint |
+| `ARRIVO_LLM_MODEL` | `gpt-4o-mini` | model used for the alerts |
 
 ---
 
@@ -203,7 +204,7 @@ Or everything in Docker: `docker compose up --build` (API on 8000, dashboard on 
 | GET | `/model/metrics` | model card + comparison tables |
 | POST | `/predict` | one shipment → ETA, arrival time, delay probability, risk level, top-3 reasons |
 | POST | `/predict/batch` | CSV upload → all shipments ranked by risk; bad rows reported, not fatal |
-| POST | `/alert` | bonus: plain-English customer message |
+| POST | `/alert` | plain-English customer message |
 
 ```bash
 curl -X POST localhost:8000/predict -H "Content-Type: application/json" -d '{
@@ -239,7 +240,7 @@ arrivo/
 │   ├── features/    build_features.py (time/route features, route history, time split)
 │   ├── models/      common.py · train_eta.py · train_delay.py · evaluate.py · predict.py
 │   ├── explain/     shap_utils.py (SHAP back-ends, reason groups, plots)
-│   ├── llm/         alerts.py (bonus: customer alerts)
+│   ├── llm/         alerts.py (customer alerts)
 │   ├── eda.py       11 EDA plots + auto-written insights
 │   └── pipeline.py  end-to-end run
 ├── api/             main.py (FastAPI) · schemas.py (Pydantic) · service.py (logic)
@@ -247,7 +248,7 @@ arrivo/
 ├── models/          eta_model.joblib · delay_model.joblib · route_stats.joblib · model_card.json
 ├── reports/         figures/ (EDA, SHAP, test plots) · metrics/ (comparison tables, runs) · eda_insights.md
 ├── tests/           32 tests: data, features, leakage, explanations, predictor, service, API
-├── docs/            data dictionary · feature list · phase summaries · deployment · viva prep
+├── docs/            data dictionary · feature list · methodology · deployment
 ├── deploy/huggingface/   Space README + Dockerfile
 ├── Dockerfile · docker-compose.yml · render.yaml · Makefile
 └── requirements.txt · requirements-dev.txt

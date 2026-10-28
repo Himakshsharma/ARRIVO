@@ -47,7 +47,7 @@ RISK_COLORS = {"Low": "#2E8B57", "Medium": "#D9861C", "High": "#C8372D"}
 FONT = "Barlow, system-ui, sans-serif"
 DISPLAY = "'Barlow Condensed', Barlow, system-ui, sans-serif"
 
-st.set_page_config(page_title="Arrivo – ETA & Delay Risk", page_icon="🚚", layout="wide",
+st.set_page_config(page_title="Arrivo – ETA & Delay Risk", page_icon=":material/local_shipping:", layout="wide",
                    initial_sidebar_state="collapsed")
 
 # ---------------------------------------------------------------------------
@@ -92,9 +92,8 @@ header[data-testid="stHeader"] {{ background: transparent; }}
 .arv-brand {{ font-family: {DISPLAY}; font-size: 2.6rem; font-weight: 700; line-height: 1; }}
 .arv-brand span {{ color: {YELLOW}; }}
 .arv-tag {{ font-size: 1.05rem; opacity: .85; margin-top: 6px; max-width: 60ch; }}
-.arv-band-stats {{ display: flex; gap: 34px; margin-top: 16px; flex-wrap: wrap; }}
-.arv-band-stats div b {{ font-family: {DISPLAY}; font-size: 1.7rem; font-weight: 600; display: block; color: {YELLOW}; }}
-.arv-band-stats div {{ font-size: .9rem; opacity: .9; }}
+.arv-proof {{ margin: 12px 0 8px; font-size: .92rem; color: #C9CED5; max-width: 72ch; }}
+.arv-proof b {{ color: {YELLOW}; font-weight: 600; font-variant-numeric: tabular-nums; }}
 
 /* ---------- kilometre stone ---------- */
 .stone-wrap {{ display: flex; justify-content: center; padding: 6px 0 2px; }}
@@ -125,21 +124,24 @@ header[data-testid="stHeader"] {{ background: transparent; }}
 .road .lbl.bottom {{ bottom: -26px; }}
 
 /* ---------- reasons ---------- */
-.reason {{ display: grid; grid-template-columns: 26px 1fr auto; gap: 10px; align-items: center;
-  background: {CARD}; border: 1px solid {LINE}; border-left: 6px solid var(--c); border-radius: 8px;
-  padding: 10px 14px; margin-bottom: 8px; }}
-.reason .ic {{ font-family: {DISPLAY}; font-weight: 700; color: var(--c); font-size: 1.3rem; }}
+.reason {{ display: grid; grid-template-columns: 30px 1fr auto; gap: 12px; align-items: center;
+  background: {CARD}; border: 1px solid {LINE}; border-radius: 8px; padding: 10px 14px; margin-bottom: 8px; }}
+.reason .ic {{ width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center;
+  background: color-mix(in srgb, var(--c) 16%, transparent); color: var(--c); }}
+.reason .ic svg {{ width: 16px; height: 16px; }}
 .reason .tx {{ color: {TEXT}; }}
-.reason .hr {{ font-family: {DISPLAY}; font-weight: 600; font-size: 1.15rem; color: var(--c); }}
+.reason .hr {{ font-family: {DISPLAY}; font-weight: 600; font-size: 1.15rem; color: var(--c);
+  font-variant-numeric: tabular-nums; }}
 
 .pill {{ display:inline-block; padding: 3px 14px; border-radius: 999px; color: #fff; font-weight: 600;
   font-size: .95rem; vertical-align: middle; }}
 .note {{ color: {MUTED}; font-size: .9rem; }}
 
 .tiles {{ display: flex; flex-wrap: wrap; gap: 12px; margin: 6px 0 14px; }}
-.tile {{ flex: 1 1 150px; background: {CARD}; border: 1px solid {LINE}; border-left: 6px solid {SIGN_GREEN};
-  border-radius: 10px; padding: 10px 14px; color: {MUTED}; font-size: .92rem; }}
-.tile b {{ display: block; font-family: {DISPLAY}; font-size: 1.9rem; font-weight: 600; color: {TEXT}; }}
+.tile {{ flex: 1 1 150px; background: {CARD}; border: 1px solid {LINE}; border-radius: 10px;
+  padding: 10px 14px; color: {MUTED}; font-size: .92rem; }}
+.tile b {{ display: block; font-family: {DISPLAY}; font-size: 1.9rem; font-weight: 600; color: {TEXT};
+  font-variant-numeric: tabular-nums; }}
 
 /* ---------- native widgets ---------- */
 div[data-testid="stMetric"] {{ background: {CARD}; border: 1px solid {LINE}; border-radius: 10px; padding: 12px 16px; }}
@@ -150,6 +152,10 @@ div[data-testid="stForm"] {{ background: {CARD}; border: 1px solid {LINE}; borde
 div[data-testid="stFormSubmitButton"] > button {{ background: {SIGN_GREEN}; color: #fff; border: 0; padding: .5rem 1.6rem; }}
 div[data-testid="stFormSubmitButton"] > button:hover {{ background: #175a3b; color: #fff; }}
 button:focus-visible {{ outline: 3px solid {YELLOW} !important; outline-offset: 2px; }}
+::selection {{ background: {YELLOW}; color: {ASPHALT}; }}
+.stApp input, .stApp textarea {{ caret-color: {SIGN_GREEN}; }}
+.stApp {{ scrollbar-color: {LINE} transparent; }}
+div[data-testid="stMetricValue"], .road .lbl {{ font-variant-numeric: tabular-nums; }}
 div[data-testid="stTabs"] button p {{ font-family: {DISPLAY}; font-size: 1.1rem; font-weight: 600; }}
 @media (max-width: 640px) {{
   .arv-brand {{ font-size: 2rem; }}
@@ -211,7 +217,7 @@ header[data-testid="stHeader"] * {{ color: {TEXT}; }}
 @st.cache_resource(show_spinner="Starting the prediction engine…")
 def get_client() -> ArrivoClient:
     client = ArrivoClient()
-    client.health()          # loads (or, if needed, retrains) the models once
+    client.health()          # warm up: load models once per process
     return client
 
 
@@ -249,10 +255,9 @@ def band(metrics: dict | None):
     stats = ""
     if metrics:
         e, d = metrics["eta_model"]["test_metrics"], metrics["delay_model"]["test_metrics"]
-        stats = (f'<div class="arv-band-stats">'
-                 f'<div><b>{e["MAE"]:.1f} hrs</b>average ETA error</div>'
-                 f'<div><b>{d["ROC_AUC"]:.2f}</b>delay-risk ROC-AUC</div>'
-                 f'<div><b>{d["Recall"]:.0%}</b>of late trucks caught</div></div>')
+        stats = (f'<p class="arv-proof">On the most recent six months of trips, predicted arrival was '
+                 f'within <b>{e["MAE"]:.1f} hours</b> on average, and <b>{d["Recall"]:.0%}</b> of late '
+                 f'trucks were flagged before departure.</p>')
     st.markdown(f'<div class="arv-band"><div class="arv-brand">Arrivo<span>.</span></div>'
                 f'<div class="arv-tag">Know which trucks will be late before they leave the yard: '
                 f'predicted arrival, delay risk and the reasons behind it.</div>{stats}</div>',
@@ -331,13 +336,19 @@ def route_map(rows: list[dict], height: int = 420) -> go.Figure:
     return fig
 
 
+ARROW_UP = ('<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13V3M3.5 7.5 8 3l4.5 4.5" '
+            'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>')
+ARROW_DOWN = ('<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3.5 8.5 8 13l4.5-4.5" '
+              'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>')
+
+
 def reasons_block(pred: dict):
     for r in pred["top_reasons"]:
         up = r["risk_direction"] == "raises risk"
         c = RISK_COLORS["High"] if up else RISK_COLORS["Low"]
         text = r["text"].rsplit(" (", 1)[0] if r["text"].endswith("hrs)") else r["text"]
         hrs = f'{r["eta_impact_hours"]:+.1f} h' if r["factor"] not in ("schedule", "route_length") else ""
-        st.markdown(f'<div class="reason" style="--c:{c}"><span class="ic">{"▲" if up else "▼"}</span>'
+        st.markdown(f'<div class="reason" style="--c:{c}"><span class="ic">{ARROW_UP if up else ARROW_DOWN}</span>'
                     f'<span class="tx">{text}<br><span class="note">{"Raises" if up else "Lowers"} delay risk</span></span>'
                     f'<span class="hr">{hrs}</span></div>', unsafe_allow_html=True)
 
@@ -529,7 +540,7 @@ def page_predict():
             try:
                 out = get_client().alert(ss.payload, name, tone)
                 st.success(out["message"])
-                st.caption("Written by Claude" if out["mode"] == "llm" else "Written from a template (no LLM key configured)")
+                st.caption("Written by the language model" if out["mode"] == "llm" else "Written from a template")
             except ApiError as e:
                 st.error(str(e))
 
@@ -720,7 +731,7 @@ It looks only at what's known at dispatch: the route and distance, the dispatch 
 weather at both ends, Indian festivals and holidays, the monsoon, and each route's and supplier's past record.
 
 Built with scikit-learn, SHAP, FastAPI and Streamlit. Source code:
-[github.com/Himakshsharma/Arrivo](https://github.com/Himakshsharma/Arrivo)
+[github.com/Himakshsharma/ARRIVO](https://github.com/Himakshsharma/ARRIVO)
 """)
     with st.expander("System status"):
         st.json({**get_client().health(), "client_mode": get_client().mode})
@@ -745,5 +756,5 @@ with nav_col:
     page = st.segmented_control("Section", list(PAGES), default="Check a shipment", label_visibility="collapsed",
                                 key="nav")
 with theme_col:
-    st.toggle("🌙 Dark mode", key="dark")
+    st.toggle("Dark mode", key="dark")
 PAGES[page or "Check a shipment"]()

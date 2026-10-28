@@ -1,10 +1,10 @@
-"""
-End-to-end pipeline: raw data -> clean -> enrich -> features -> models -> explanations.
+"""End-to-end training pipeline: load, clean, enrich, build features, train, explain.
 
-Usage:
-    python -m src.pipeline                 # full run (30 Optuna trials per model)
-    python -m src.pipeline --trials 10     # quicker
-    python -m src.pipeline --synthetic     # ignore any Kaggle file in data/raw
+Usage::
+
+    python -m src.pipeline               # 30 tuning trials per model
+    python -m src.pipeline --trials 10
+    python -m src.pipeline --synthetic   # ignore any Kaggle file in data/raw
 """
 from __future__ import annotations
 
@@ -41,33 +41,33 @@ def run(n_trials: int = 30, force_synthetic: bool = False) -> dict:
     for d in (config.INTERIM_DIR, config.PROCESSED_DIR, config.MODELS_DIR, config.FIGURES_DIR, config.METRICS_DIR):
         d.mkdir(parents=True, exist_ok=True)
 
-    # ---- Phase 1-2: load + clean -------------------------------------------------
+    # Load and clean
     canonical, source = load_canonical(force_synthetic)
     df, clean_report = clean(canonical)
     df.to_csv(config.CLEAN_FILE, index=False)
     log.info("Data source: %s | clean rows: %d | delay rate %.1f%%", source, len(df), 100 * df.is_delayed.mean())
 
-    # ---- Phase 3: enrichment + features -------------------------------------------
-    live = source != "synthetic"           # synthetic world -> synthetic (climatology) weather
+    # Enrich and build features
+    live = source != "synthetic"           # synthetic data uses climatology weather
     enriched = enrich(df, live=live)
-    write_insights(run_eda(canonical, df, enriched, clean_report))   # 11 EDA plots + insights
+    write_insights(run_eda(canonical, df, enriched, clean_report))
     full = base_features(enriched)
     full.to_csv(config.FEATURES_FILE, index=False)
     train, val, test, hist_train = build_model_frames(enriched)
     log.info("Split sizes  train %d | val %d | test %d", len(train), len(val), len(test))
 
-    # ---- Phase 4: models --------------------------------------------------------------
+    # Train
     tracker = Tracker()
     eta_res = train_eta.run(train, val, test, tracker, n_trials)
     delay_res = train_delay.run(train, val, test, tracker, n_trials)
     joblib.dump(hist_train, config.ROUTE_STATS_FILE)
 
-    # ---- Phase 5: explainability (global, on the TEST set) -------------------------
+    # Global explanations on the test split
     eta_art, del_art = joblib.load(config.ETA_MODEL_FILE), joblib.load(config.DELAY_MODEL_FILE)
     Xte = feature_matrix(test)
     eta_c, eta_base, eta_method = explain(eta_art["pipeline"], Xte, "regression")
     del_c, del_base, del_method = explain(del_art["pipeline"], Xte, "classification")
-    # additivity check: base + sum(contributions) must equal the model output
+    # Additivity check: base + sum(contributions) == model output
     eta_pred = eta_art["pipeline"].predict(Xte)
     additivity_err = float(np.max(np.abs(eta_base + eta_c.sum(axis=1).values - eta_pred)))
     fig = config.FIGURES_DIR
@@ -76,7 +76,7 @@ def run(n_trials: int = 30, force_synthetic: bool = False) -> dict:
     del_imp = plot_importance(del_c, fig / "shap_delay_importance.png", "What drives delay risk", del_unit)
     plot_beeswarm(eta_c, Xte, fig / "shap_eta_summary.png", "SHAP summary – ETA model", "hours")
     plot_beeswarm(del_c, Xte, fig / "shap_delay_summary.png", "SHAP summary – delay model", del_unit)
-    # example shipment: a typical high-risk case (probability closest to 0.85), not the most extreme one
+    # Example shipment for the local plots: predicted risk closest to 0.85
     risky = int(np.argmin(np.abs(delay_res["test_proba"] - 0.85)))
     idx = Xte.index[risky]
     plot_waterfall(eta_c.loc[idx], eta_base, Xte.loc[idx], fig / "shap_eta_waterfall_example.png",
@@ -84,7 +84,7 @@ def run(n_trials: int = 30, force_synthetic: bool = False) -> dict:
     plot_waterfall(del_c.loc[idx], del_base, Xte.loc[idx], fig / "shap_delay_waterfall_example.png",
                    "Why this shipment is high-risk", del_unit)
 
-    # ---- model card: everything the API / dashboard needs to know -----------------
+    # Model card consumed by the API and dashboard
     tr_val = pd.concat([train, val])
     slope, intercept = np.polyfit(tr_val.road_distance_km, tr_val.planned_hours, 1)
     hav = tr_val.haversine_km.clip(lower=1)
@@ -117,7 +117,7 @@ def run(n_trials: int = 30, force_synthetic: bool = False) -> dict:
     }
     config.MODEL_CARD_FILE.write_text(json.dumps(card, indent=2, default=str))
 
-    # A sample batch file for the dashboard/API demo (taken from the test period)
+    # Sample batch for the dashboard, drawn from the test period
     sample = test.sample(40, random_state=config.RANDOM_SEED)
     sample[["booking_id", "origin_city", "destination_city", "dispatch_time", "vehicle_type", "material_type",
             "supplier_id", "planned_hours", "road_distance_km"]].rename(

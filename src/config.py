@@ -1,10 +1,4 @@
-"""
-Central configuration for Arrivo.
-
-Every path, constant and "magic number" lives here so that
-training, the API and the dashboard all agree on the same settings.
-Change a value here once, and the whole project follows.
-"""
+"""Project-wide paths, constants and feature lists shared by training, the API and the dashboard."""
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
@@ -20,12 +14,12 @@ REPORTS_DIR = ROOT / "reports"
 FIGURES_DIR = REPORTS_DIR / "figures"
 METRICS_DIR = REPORTS_DIR / "metrics"
 
-# Weather / route API caches (so we never call an external API twice for the same thing)
+# Caches for external API responses
 WEATHER_CACHE_DIR = INTERIM_DIR / "weather_cache"
 ROUTE_CACHE_FILE = INTERIM_DIR / "route_cache.csv"
 
 # Raw dataset file names
-KAGGLE_TRUCK_FILE = RAW_DIR / "Delivery_truck_trip_data.xlsx"   # real Kaggle file (if downloaded)
+KAGGLE_TRUCK_FILE = RAW_DIR / "Delivery_truck_trip_data.xlsx"   # Kaggle export, if present
 SYNTHETIC_FILE = RAW_DIR / "arrivo_trips_synthetic.csv"          # generated fallback
 
 CLEAN_FILE = INTERIM_DIR / "trips_clean.csv"
@@ -37,28 +31,26 @@ FEATURES_FILE = PROCESSED_DIR / "trips_features.csv"
 RANDOM_SEED = 42
 
 # ---------------------------------------------------------------------------
-# Target definitions (explained in docs/data_dictionary.md)
+# Targets (see docs/data_dictionary.md)
 # ---------------------------------------------------------------------------
-# ETA target: actual transit time in hours (trip_end - trip_start)
 ETA_TARGET = "actual_hours"
-# Delay target: 1 if the truck arrives later than planned + a grace period
 DELAY_TARGET = "is_delayed"
-DELAY_GRACE_HOURS = 0.0   # 0 = same definition as the Kaggle dataset ("actual > planned")
+DELAY_GRACE_HOURS = 0.0   # late when actual_hours > planned_hours + grace
 
 # ---------------------------------------------------------------------------
-# Time-based split (NO random split -> no peeking into the future)
+# Chronological split boundaries
 # ---------------------------------------------------------------------------
 TRAIN_END = "2024-12-31 23:59:59"   # train:      2023-01-01 -> 2024-12-31
 VAL_END = "2025-06-30 23:59:59"     # validation: 2025-01-01 -> 2025-06-30
                                     # test:       2025-07-01 -> end of data
 
 # ---------------------------------------------------------------------------
-# Risk bands shown to operations managers
+# Delay-probability bands shown in the UI
 # ---------------------------------------------------------------------------
 RISK_BANDS = {"Low": (0.0, 0.35), "Medium": (0.35, 0.65), "High": (0.65, 1.01)}
 
 # ---------------------------------------------------------------------------
-# Feature lists (used by training AND inference -> no train/serve skew)
+# Model features (shared by training and inference)
 # ---------------------------------------------------------------------------
 NUMERIC_FEATURES = [
     # route / distance
@@ -74,22 +66,22 @@ NUMERIC_FEATURES = [
     # weather on dispatch day
     "origin_rain_mm", "dest_rain_mm", "origin_temp_c", "dest_temp_c",
     "max_wind_kmph", "is_heavy_rain",
-    # historical aggregates (computed from TRAINING data only)
+    # history, fitted on the training split only
     "route_hist_delay_rate", "route_hist_overrun_ratio", "route_hist_trips",
     "supplier_hist_delay_rate",
 ]
 CATEGORICAL_FEATURES = ["vehicle_type", "material_type", "origin_region", "dest_region"]
 ALL_FEATURES = NUMERIC_FEATURES + CATEGORICAL_FEATURES
 
-# Columns that are only known AFTER delivery -> must NEVER be used as features
+# Post-delivery columns; never valid as features
 LEAKY_COLUMNS = [
     "actual_hours", "is_delayed", "trip_end_time", "delay_hours",
     "actual_eta", "trip_end_date", "ontime", "delay", "Current_Location",
     "Curr_lat", "Curr_lon", "Data_Ping_time",
 ]
 
-# Heavy rain threshold (IMD classifies 64.5 mm/day as "heavy"; we flag >= 35 mm as
-# "travel-disrupting" because trucks slow down well before IMD's heavy category)
+# Daily rainfall treated as travel-disrupting. Lower than IMD's 64.5 mm "heavy"
+# category because road speeds drop well before that.
 HEAVY_RAIN_MM = 35.0
 
 # Model artifact names

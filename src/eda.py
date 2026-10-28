@@ -1,8 +1,6 @@
-"""
-Exploratory data analysis: 10 plots + numeric insights.
+"""Exploratory data analysis: figures in ``reports/figures`` and a summary in ``reports/eda_insights.md``.
 
-Run:  python -m src.eda      (writes reports/figures/eda_*.png and reports/eda_insights.md)
-The 01_eda notebook calls the same functions so the notebook and the report never disagree.
+Usage: ``python -m src.eda``
 """
 from __future__ import annotations
 
@@ -19,7 +17,7 @@ import seaborn as sns  # noqa: E402
 from src import config  # noqa: E402
 
 sns.set_theme(style="whitegrid", palette="deep")
-logging.getLogger("matplotlib.category").setLevel(logging.WARNING)   # silence label-type notices
+logging.getLogger("matplotlib.category").setLevel(logging.WARNING)
 FIG = config.FIGURES_DIR
 MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 

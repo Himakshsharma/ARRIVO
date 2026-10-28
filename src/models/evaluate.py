@@ -1,14 +1,4 @@
-"""
-Metrics and evaluation plots.
-
-Regression (ETA):   MAE  -> "on average we are off by X hours" (easy to explain)
-                    RMSE -> punishes big misses more (a 20-hr miss hurts more than 4x 5-hr misses)
-                    R²   -> share of the variation in transit time we explain
-Classification:     ROC-AUC -> how well we RANK risky above safe shipments (threshold-free)
-                    Precision -> of the shipments we flag, how many really were late
-                    Recall    -> of the late shipments, how many we caught
-                    F1        -> balance of the two
-"""
+"""Evaluation metrics and diagnostic plots for the ETA and delay models."""
 from __future__ import annotations
 
 import matplotlib

@@ -1,20 +1,14 @@
-"""
-Explainability: SHAP values -> plots -> human-readable reasons.
+"""SHAP-based explanations, reason text and explanation plots.
 
-What is a SHAP value (viva version)?
-  Start from the model's average prediction (the "base value"). Each feature
-  then pushes the prediction up or down; the SHAP value is the size of that
-  push. They always add up exactly:  base + sum(SHAP) = this prediction.
-  So "+2.1 hrs from rain at destination" literally means rain added 2.1 hours
-  to this shipment's predicted ETA.
+Contributions are additive: ``base + sum(contributions) == model output``.
+The back-end is chosen per model type:
 
-Back-ends (picked automatically, best first):
-  linear models      -> exact closed form  coef * (x - mean)
-  LightGBM / XGBoost -> built-in TreeSHAP (pred_contrib), exact and fast
-  other tree models  -> `shap.TreeExplainer` if the shap package is installed,
-                        else Saabas path attribution (additive, SHAP-like)
-One-hot columns are summed back to their original feature, so a manager sees
-"Vehicle type", not "cat__vehicle_type_32 FT Multi-Axle".
+* linear models: exact closed form, ``coef * (x - mean)``;
+* LightGBM / XGBoost: native TreeSHAP (``pred_contrib``);
+* other tree ensembles: ``shap.TreeExplainer`` if installed, else Saabas
+  path attribution.
+
+One-hot columns are summed back to their source feature.
 """
 from __future__ import annotations
 
@@ -38,9 +32,9 @@ except Exception:  # noqa: BLE001
 # Raw contributions in the transformed (one-hot) space
 # ---------------------------------------------------------------------------
 def _saabas_tree(tree, X, value_fn):
-    """Path attribution for one sklearn decision tree (vectorised with sparse algebra)."""
+    """Saabas path attribution for one fitted decision tree."""
     t = tree.tree_
-    values = value_fn(t.value)                          # node -> prediction at that node
+    values = value_fn(t.value)                          # prediction at each node
     parent = np.full(t.node_count, -1)
     for p in range(t.node_count):
         for c in (t.children_left[p], t.children_right[p]):
@@ -72,7 +66,7 @@ def _tree_contribs(model, X, kind):
         elif np.ndim(sv) == 3:                            # newer shap: (n, features, classes)
             sv, base = sv[:, :, 1], np.atleast_1d(base)[1]
         return np.asarray(sv), float(np.atleast_1d(base)[0]), "shap-treeexplainer"
-    # --- Saabas fallback for sklearn ensembles ---
+    # Saabas attribution for scikit-learn ensembles
     if name.startswith("RandomForest"):
         if kind == "classification":
             fn = lambda v: v[:, 0, 1] / v[:, 0, :].sum(axis=1)   # P(late) at each node
@@ -118,7 +112,7 @@ def explain(pipeline, X_raw: pd.DataFrame, kind: str) -> tuple[pd.DataFrame, flo
 
 
 def set_linear_background(pipeline, X_train_raw: pd.DataFrame):
-    """Linear SHAP needs the training mean of each transformed column (the 'average shipment')."""
+    """Store the training mean of each transformed column, required for linear contributions."""
     if hasattr(pipeline.named_steps["model"], "coef_"):
         pipeline._train_mean_ = pipeline.named_steps["pre"].transform(X_train_raw).mean(axis=0)
     return pipeline
@@ -147,7 +141,7 @@ LABELS = {
 
 
 def describe(feature: str, value) -> str:
-    """Turn a feature + its value into a phrase an operations manager understands."""
+    """Human-readable phrase for a single feature value."""
     label = LABELS.get(feature, feature)
     try:
         v = float(value)
@@ -180,8 +174,8 @@ def describe(feature: str, value) -> str:
     return f"{label} ({v:,.2f})"
 
 
-# Correlated features share credit in SHAP, so for a manager-facing reason we
-# add them up into one "reason group" (allowed: SHAP values are additive).
+# Correlated features split SHAP credit, so reasons are reported per group
+# (valid because contributions are additive).
 REASON_GROUPS = {
     "route_length": ["road_distance_km", "haversine_km", "osrm_duration_hrs", "route_detour_ratio"],
     "schedule": ["planned_hours", "planned_speed_kmph"],
@@ -207,7 +201,7 @@ def group_contributions(row: pd.Series) -> pd.Series:
 
 
 def describe_group(group: str, x: pd.Series, raises: bool) -> str:
-    """Plain-English text for a reason group, using the shipment's actual values."""
+    """Human-readable phrase for a reason group, using the shipment's values."""
     g = lambda f: x.get(f)  # noqa: E731
     if group == "route_length":
         km = float(g("road_distance_km"))
@@ -260,13 +254,11 @@ def describe_group(group: str, x: pd.Series, raises: bool) -> str:
 
 def top_reasons(eta_row: pd.Series, delay_row: pd.Series, raw_row: pd.Series, k: int = 3,
                 prefer: str = "raise") -> list[dict]:
-    """
-    Top-k reasons for ONE shipment.
-    * Ranked by impact on DELAY risk (that's what an ops manager acts on).
-    * prefer="raise": at-risk shipment -> show what pushes risk UP.
-      prefer="lower": low-risk shipment -> show what keeps it SAFE.
-      If there are fewer than k such factors, the other direction fills the list.
-    * Each reason also carries its effect on the ETA in hours (from the ETA model).
+    """Return the top-k reason groups for one shipment.
+
+    Groups are ranked by their contribution to delay risk. ``prefer="raise"``
+    lists risk-increasing factors first; ``prefer="lower"`` lists risk-reducing
+    ones first. Each reason also carries its ETA contribution in hours.
     """
     d, e = group_contributions(delay_row), group_contributions(eta_row)
     raising = d[d > 0].sort_values(ascending=False)
@@ -277,9 +269,8 @@ def top_reasons(eta_row: pd.Series, delay_row: pd.Series, raw_row: pd.Series, k:
     for grp in chosen:
         hrs = float(e[grp]); up = d[grp] > 0
         text = describe_group(grp, raw_row, up)
-        # SHAP hours are measured against the AVERAGE trip (~33 hrs). For trip length/schedule that
-        # number mostly says "this trip is shorter/longer than average", which confuses users, so the
-        # text omits it (it stays available in eta_impact_hours).
+        # Size-related groups are relative to an average-length trip, so their hours
+        # are left out of the text (still available in eta_impact_hours).
         if grp not in SIZE_GROUPS:
             text += f" ({hrs:+.1f} hrs)"
         out.append({"factor": grp, "text": text,
@@ -290,7 +281,7 @@ def top_reasons(eta_row: pd.Series, delay_row: pd.Series, raw_row: pd.Series, k:
 
 
 # ---------------------------------------------------------------------------
-# Plots (matplotlib only -> work with or without the shap package)
+# Plots (matplotlib only, no dependency on the shap package)
 # ---------------------------------------------------------------------------
 def plot_importance(contrib: pd.DataFrame, path, title, unit):
     imp = contrib.abs().mean().sort_values().tail(15)
@@ -302,14 +293,14 @@ def plot_importance(contrib: pd.DataFrame, path, title, unit):
 
 
 def plot_beeswarm(contrib: pd.DataFrame, X_raw: pd.DataFrame, path, title, unit, n=12, max_points=3000):
-    """SHAP 'summary plot': each dot is one shipment; colour = feature value (red = high)."""
+    """Beeswarm-style summary: one point per shipment, coloured by feature value."""
     feats = contrib.abs().mean().sort_values(ascending=False).head(n).index[::-1]
     sample = contrib.sample(min(max_points, len(contrib)), random_state=config.RANDOM_SEED).index
     rng = np.random.default_rng(0)
     fig, ax = plt.subplots(figsize=(9, 6.5))
     for i, f in enumerate(feats):
         vals = pd.to_numeric(X_raw.loc[sample, f], errors="coerce")
-        if vals.isna().all():                            # categorical -> grey
+        if vals.isna().all():                            # categorical feature
             colors = "#a0aec0"
         else:
             lo, hi = np.nanpercentile(vals, [5, 95])
@@ -324,8 +315,7 @@ def plot_beeswarm(contrib: pd.DataFrame, X_raw: pd.DataFrame, path, title, unit,
 
 
 def plot_waterfall(contrib_row: pd.Series, base: float, raw_row: pd.Series, path, title, unit, k=8):
-    """Local explanation for one shipment: how we got from the average to this prediction.
-    Uses the same reason groups as the API, so the plot and the API's reasons agree."""
+    """Waterfall chart of grouped contributions for a single shipment."""
     grouped = group_contributions(contrib_row)
     top = grouped.reindex(grouped.abs().sort_values(ascending=False).index)
     shown, rest = top.head(k), top.iloc[k:].sum()

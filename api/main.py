@@ -83,10 +83,9 @@ async def predict_batch(file: UploadFile = File(..., description="CSV with colum
         raise HTTPException(status_code=400, detail=str(e)) from e
 
 
-@app.post("/alert", response_model=AlertOut, tags=["bonus"])
+@app.post("/alert", response_model=AlertOut, tags=["alerts"])
 def alert(req: AlertIn):
-    """Phase 8 bonus: turn a prediction into a plain-English customer message
-    (Claude if ANTHROPIC_API_KEY is set, otherwise a deterministic template)."""
+    """Customer-facing message for a shipment (LLM if configured, otherwise a template)."""
     _models_or_503()
     try:
         return service.alert(req.shipment, req.customer_name, req.tone, req.use_llm)

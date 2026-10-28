@@ -1,7 +1,4 @@
-"""
-Request/response models. Pydantic validates every request BEFORE it reaches the
-model, so bad input gets a clear 422 error instead of a confusing crash.
-"""
+"""Pydantic request and response models for the API."""
 from __future__ import annotations
 
 from datetime import datetime

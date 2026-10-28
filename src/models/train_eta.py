@@ -1,12 +1,7 @@
-"""
-ETA regression: predict transit hours.
+"""Train and select the ETA (transit hours) regressor.
 
-Steps
-1. Fit every candidate (baseline -> boosted trees) on TRAIN, score on VALIDATION.
-2. Pick the best model by validation MAE.
-3. Tune its hyper-parameters (Optuna) against validation MAE.
-4. Refit with the best parameters, report the TEST score once, save the model.
-The test set is touched exactly once, at the very end -> an honest estimate.
+Candidates are fitted on the training split and compared on validation MAE.
+The best one is tuned, the test split is scored once, and the pipeline is saved.
 """
 from __future__ import annotations
 
@@ -36,7 +31,7 @@ def run(train: pd.DataFrame, val: pd.DataFrame, test: pd.DataFrame, tracker: Tra
     Xva, yva = feature_matrix(val), val[config.ETA_TARGET]
     Xte, yte = feature_matrix(test), test[config.ETA_TARGET]
 
-    # Naive benchmark: "trust the planner" -> predicted ETA = planned hours
+    # Benchmark: the planner's own ETA
     rows = [{"model": "Planner's ETA (no ML)", "stage": "benchmark",
              **{f"val_{k}": v for k, v in regression_metrics(yva, val.planned_hours).items()},
              **{f"test_{k}": v for k, v in regression_metrics(yte, test.planned_hours).items()}}]
@@ -79,7 +74,7 @@ def run(train: pd.DataFrame, val: pd.DataFrame, test: pd.DataFrame, tracker: Tra
         final, best_params = fitted[best_name], {}
         mt = regression_metrics(yte, final.predict(Xte))
 
-    set_linear_background(final, Xtr)   # needed to explain a linear model
+    set_linear_background(final, Xtr)
     config.FIGURES_DIR.mkdir(parents=True, exist_ok=True)
     plot_eta(yte, final.predict(Xte), config.FIGURES_DIR / "eta_test_performance.png",
              f"ETA model ({best_name}) – test set")

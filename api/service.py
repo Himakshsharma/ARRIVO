@@ -1,7 +1,4 @@
-"""
-Business logic behind the API, kept separate from FastAPI so it can be unit
-tested directly and reused by the dashboard or a batch job.
-"""
+"""Service layer behind the HTTP API, also used directly by the dashboard."""
 from __future__ import annotations
 
 import io
@@ -29,14 +26,14 @@ class ModelNotReady(RuntimeError):
 
 @lru_cache(maxsize=1)
 def get_predictor() -> ArrivoPredictor:
-    """Load the models once per process (they're ~MBs; loading per request would be slow)."""
+    """Load models once per process, retraining if allowed and the artifacts are missing or unreadable."""
     if not config.ETA_MODEL_FILE.exists():
         if os.getenv("ARRIVO_AUTO_TRAIN", "1") != "1":
             raise ModelNotReady("Models not trained yet. Run: python -m src.pipeline")
         _quick_train("no saved models found")
     try:
         return ArrivoPredictor()
-    except Exception as e:  # noqa: BLE001 - e.g. models pickled with a different scikit-learn
+    except Exception as e:  # noqa: BLE001 - e.g. artifacts from another scikit-learn version
         if os.getenv("ARRIVO_AUTO_TRAIN", "1") != "1":
             raise ModelNotReady(f"Saved models could not be loaded ({e}). Re-run: python -m src.pipeline") from e
         _quick_train(f"saved models incompatible: {e}")
@@ -44,7 +41,7 @@ def get_predictor() -> ArrivoPredictor:
 
 
 def _quick_train(reason: str) -> None:
-    """Self-healing for cloud hosts: retrain quickly (few tuning trials) so the app always starts."""
+    """Retrain with a small tuning budget."""
     logging.getLogger(__name__).warning("Retraining models (%s)", reason)
     from src.pipeline import run
     run(n_trials=2)
@@ -79,7 +76,7 @@ def _summary(results: list[dict], errors: list[dict]) -> dict:
 
 
 def predict_batch_csv(content: bytes) -> dict:
-    """Validate every row; predict the valid ones in a single vectorised call; report bad rows."""
+    """Validate each CSV row, score valid rows in one call and report invalid ones."""
     try:
         df = pd.read_csv(io.BytesIO(content))
     except Exception as e:                                 # noqa: BLE001
@@ -98,7 +95,7 @@ def predict_batch_csv(content: bytes) -> dict:
             records.append(ShipmentIn(**row).to_record())
         except ValidationError as e:
             msg = "; ".join(f"{'.'.join(map(str, err['loc'])) or 'row'}: {err['msg']}" for err in e.errors())
-            errors.append({"row": i + 2, "shipment_id": row.get("shipment_id"), "error": msg})  # +2: header + 1-based
+            errors.append({"row": i + 2, "shipment_id": row.get("shipment_id"), "error": msg})  # 1-based, after header
     results = get_predictor().predict_frame(records) if records else []
     return _summary(results, errors)
 

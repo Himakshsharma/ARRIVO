@@ -1,4 +1,6 @@
-# Phase-by-phase summary (what · results · files · why)
+# Methodology
+
+How the project was built, phase by phase: what was done, the results, the files involved and the reasoning behind each decision.
 
 All numbers below are from the committed run on the synthetic twin dataset (14,892 clean trips). Re-running on the Kaggle file regenerates every table and figure.
 
@@ -24,7 +26,7 @@ All numbers below are from the committed run on the synthetic twin dataset (14,8
 
 **Files:** `src/config.py`, `src/data/load.py`, `src/data/geo.py`, `docs/data_dictionary.md`, `requirements*.txt`, `README.md`
 
-**Viva points**
+**Rationale**
 - We chose the dataset by *label quality* first: a model is only as good as its target, and only the truck dataset has a real planned-vs-actual delay.
 - One canonical schema means the rest of the pipeline doesn't care which dataset is used — swapping in new data is a one-file change.
 - The synthetic twin is generated from documented, realistic causal effects, so we know the "true" drivers and can check SHAP finds them (it does: rain, route history, supplier, festivals, rush hour).
@@ -38,7 +40,7 @@ All numbers below are from the committed run on the synthetic twin dataset (14,8
 
 **Key results:** 150 duplicates and 108 impossible trips removed, 150 distances and 450 vehicle types imputed → 14,892 trips; 35.8% late. Monsoon months 49% late vs 28% in dry months; heavy rain at destination 87% late vs 29% on dry days; festival windows 49% vs 34%; rush-hour dispatch 42% vs 25% at night; route delay rates range 0–88%.
 
-**Viva points**
+**Rationale**
 - Outliers were removed only when *physically impossible* (speed outside 5–90 km/h, negative duration) — genuine long delays are kept, because they are exactly what we want to predict.
 - Delay = actual > planned (grace configurable) matches the dataset's own on-time flag, so the label is not our invention.
 - Transit time is right-skewed, so MAE (robust, in hours) is our headline metric; RMSE is reported to show we also control big misses.
@@ -52,7 +54,7 @@ All numbers below are from the committed run on the synthetic twin dataset (14,8
 
 **Key result:** out-of-fold encoding matters — the route delay rate correlates 0.47 with the label in-sample but only 0.36 out-of-fold (0.33 on validation). The in-sample number would have been leakage.
 
-**Viva points**
+**Rationale**
 - Every feature is available at dispatch time; a unit test fails if a post-delivery column is ever added.
 - API results are cached and every external call has a fallback, so training is reproducible and the live API never crashes because a third-party service is down.
 - Route history uses smoothing so a route seen 3 times can't get a 100% delay rate from 3/3 late trips.
@@ -66,7 +68,7 @@ All numbers below are from the committed run on the synthetic twin dataset (14,8
 
 **Key results (test):** ETA MAE 3.70 h (planner 5.08 h, −27%), R² 0.933. Delay ROC-AUC 0.854, F1 0.724, recall 0.80. Calibration: Low band 14% late, Medium 53%, High 84%.
 
-**Viva points**
+**Rationale**
 - Random splits would let the model train on December and test on the previous June — it would "see the future". The time split mimics deployment.
 - Model selection and threshold tuning use validation only; the test set is touched once, at the end.
 - Imbalance (~36% late) is handled three ways: class weights, tuning the threshold for F1 instead of using 0.5, and re-calibrating probabilities so "80% risk" really means ~80%.
@@ -81,7 +83,7 @@ All numbers below are from the committed run on the synthetic twin dataset (14,8
 
 **Key result:** additivity check passes (base + ΣSHAP = prediction, max error 3e-13). Grouped delay drivers: route track record › rain › supplier › dispatch hour › monsoon › festival — the same factors that built the synthetic data.
 
-**Viva points**
+**Rationale**
 - SHAP values add up exactly to the prediction, so "+2.1 hrs from rain" is a literal decomposition, not a vague importance score.
 - Correlated features (road km, straight-line km, drive time) split credit; we sum them into groups for manager-facing reasons — legal because SHAP is additive.
 - Reasons are ranked by impact on *risk* but show the effect in *hours* from the ETA model — the two numbers managers care about.
@@ -93,7 +95,7 @@ All numbers below are from the committed run on the synthetic twin dataset (14,8
 
 **Done:** FastAPI app (`/health`, `/meta`, `/model/metrics`, `/predict`, `/predict/batch`, `/alert`), Pydantic validation (India bounding box, origin ≠ destination, unknown cities need coordinates, sane ranges), per-row error reporting in batches, 5 MB upload limit, CORS, 32 pytest tests.
 
-**Viva points**
+**Rationale**
 - Validation happens before the model: bad input returns a clear 422, never a 500.
 - Business logic lives in `api/service.py`, separate from HTTP code, so it is unit-tested directly and reused by the dashboard.
 - Batch scoring validates every row, scores valid rows in one vectorised call, and reports bad rows instead of failing the whole file.
@@ -105,24 +107,24 @@ All numbers below are from the committed run on the synthetic twin dataset (14,8
 
 **Done:** Streamlit app with 4 pages — *Check a shipment* (form, ETA cards, risk gauge, reasons, route arc map, what-if weather), *Operations view* (CSV upload or sample batch, KPI tiles, risk-sorted table with progress bars, download, map), *Model insights* (metrics, comparison tables, calibration, SHAP/EDA figures), *About*. Calls the API; falls back to in-process mode when the API is down.
 
-**Viva points**
+**Rationale**
 - The dashboard is a thin client: all logic stays behind the API, so a mobile app or ERP could reuse it.
 - The ops view is designed for action: sorted by risk, filterable, downloadable.
 - What-if sliders (rain) let managers see how conditions change the prediction — a live demo of explainability.
 
 ---
 
-## Phase 8 — Bonus: AI customer alerts
+## Phase 8 — Customer alerts
 
-**Chosen:** the LLM layer. `src/llm/alerts.py` turns a prediction into a 2–4 sentence customer message. With `ANTHROPIC_API_KEY` set it uses Claude; otherwise a deterministic template. Exposed at `POST /alert` and in the dashboard.
+`src/llm/alerts.py` turns a prediction into a 2–4 sentence customer message. With `ARRIVO_LLM_API_KEY` set it calls an OpenAI-compatible LLM endpoint; otherwise it uses a deterministic template. Exposed at `POST /alert` and in the dashboard.
 
-**Viva points**
+**Rationale**
 - The LLM only rephrases facts we pass in (ETA, risk, reasons); the prompt forbids invented causes or promises — a hallucination guardrail.
 - Ops wording ("supplier's past reliability") is translated into customer-friendly phrases ("loading time at the dispatch point").
-- Any LLM failure falls back to the template, so the demo can never break.
+- Any LLM failure falls back to the template, so the feature is always available.
 
 ---
 
 ## Phase 9 — Deployment & documentation
 
-**Done:** one Docker image (API or dashboard by start command) that trains at build time if models are missing; `docker-compose.yml`; Render blueprint; Hugging Face Spaces single-container setup; README with architecture diagram and results; deployment guide; viva preparation pack (`docs/viva_prep.md`).
+**Done:** one Docker image (API or dashboard by start command) that trains at build time if models are missing; `docker-compose.yml`; Render blueprint; Hugging Face Spaces single-container setup; README with architecture diagram and results; deployment guide.

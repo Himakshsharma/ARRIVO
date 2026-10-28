@@ -18,6 +18,3 @@ python-multipart>=0.0.9
 # ---- dashboard ----
 streamlit>=1.50
 plotly>=5.24
-pydeck>=0.9
-# ---- bonus: AI customer alerts (optional; template fallback works without a key) ----
-anthropic>=0.40

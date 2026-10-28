@@ -20,7 +20,7 @@ git push -u origin main
 2. Click **Apply**. Leave `ARRIVO_API_URL` empty for now.
 3. When `arrivo-api` is live, open `https://arrivo-api-XXXX.onrender.com/docs` to check Swagger.
 4. Open `arrivo-dashboard` → **Environment** → set `ARRIVO_API_URL` to the API's URL (no trailing slash) → **Save** (it redeploys).
-5. Optional: set `ANTHROPIC_API_KEY` on `arrivo-api` for AI-written alerts.
+5. Optional: set `ARRIVO_LLM_API_KEY` on `arrivo-api` for LLM-written customer alerts.
 
 Notes: free services sleep after ~15 minutes idle; the first request then takes ~30–60 s. Open both URLs a minute before your demo. If the dashboard can't reach the API it still works in embedded mode.
 
@@ -34,7 +34,7 @@ Notes: free services sleep after ~15 minutes idle; the first request then takes 
    git add . && git commit -m "Deploy Arrivo" && git push
    ```
 3. The Space builds and starts `scripts/start_all.sh` (API on 127.0.0.1:8000 inside the container, dashboard on port 7860).
-4. Optional: Space **Settings → Variables and secrets** → add `ANTHROPIC_API_KEY`.
+4. Optional: Space **Settings → Variables and secrets** → add `ARRIVO_LLM_API_KEY`.
 
 Keep your GitHub README as the project README; the Space README is only the config header.
 

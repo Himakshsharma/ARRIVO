@@ -1,10 +1,7 @@
-"""
-Shared modelling utilities: preprocessing, candidate models, tuning search
-spaces and experiment tracking.
+"""Shared modelling utilities: preprocessing, candidate models, search spaces and run tracking.
 
-Optional libraries (XGBoost, LightGBM, Optuna, MLflow) are imported lazily.
-If one is missing, a scikit-learn equivalent is used and the run is labelled
-clearly, so the pipeline always runs and the results table is always honest.
+XGBoost, LightGBM, Optuna and MLflow are optional. When one is missing, a
+scikit-learn or built-in equivalent is used and labelled as such.
 """
 from __future__ import annotations
 
@@ -44,11 +41,9 @@ mlflow = _try_import("mlflow")
 # Preprocessing
 # ---------------------------------------------------------------------------
 def make_preprocessor(scale_numeric: bool) -> ColumnTransformer:
-    """
-    Numeric columns: scaled for linear models (they are sensitive to units),
-    left as-is for tree models (trees only care about order).
-    Categorical columns: one-hot encoded; unseen categories at prediction time
-    become all-zeros instead of crashing.
+    """Scale numeric columns (linear models only) and one-hot encode categoricals.
+
+    Unseen categories are encoded as all zeros.
     """
     num = StandardScaler() if scale_numeric else "passthrough"
     return ColumnTransformer(
@@ -64,7 +59,7 @@ def make_pipeline(estimator, linear: bool) -> Pipeline:
 
 
 # ---------------------------------------------------------------------------
-# Candidate models  (baseline -> stronger), in the order required by the brief
+# Candidate models, baseline first
 # ---------------------------------------------------------------------------
 def regression_candidates() -> dict[str, tuple[Callable, bool]]:
     """name -> (factory(**params), is_linear)"""
@@ -89,7 +84,7 @@ def regression_candidates() -> dict[str, tuple[Callable, bool]]:
 
 
 def classification_candidates(pos_weight: float) -> dict[str, tuple[Callable, bool]]:
-    """Every model gets an imbalance-aware setting (class weights / scale_pos_weight)."""
+    """Classifiers configured for class imbalance (class weights or ``scale_pos_weight``)."""
     c = {
         "LogisticRegression": (lambda **p: LogisticRegression(
             **{"max_iter": 2000, "class_weight": "balanced", **p}), True),
@@ -115,7 +110,7 @@ def classification_candidates(pos_weight: float) -> dict[str, tuple[Callable, bo
 
 
 def needs_sample_weight(name: str) -> bool:
-    """sklearn's GradientBoosting has no class_weight -> pass balanced sample weights."""
+    """scikit-learn's GradientBoosting has no ``class_weight``; balance via sample weights."""
     return name.startswith("GradientBoosting")
 
 
@@ -129,7 +124,7 @@ def balanced_sample_weight(y) -> np.ndarray:
 # Hyper-parameter search spaces (shared by Optuna and the random-search fallback)
 # ---------------------------------------------------------------------------
 def search_space(name: str):
-    """Return a function trial -> params. Works with an Optuna trial or our fallback."""
+    """Return ``trial -> params`` for the model; accepts an Optuna trial or ``_RandomTrial``."""
     def rf(t):
         return {"n_estimators": t.suggest_int("n_estimators", 200, 600, step=100),
                 "max_depth": t.suggest_int("max_depth", 6, 30),
@@ -169,7 +164,7 @@ def search_space(name: str):
 
 
 class _RandomTrial:
-    """Minimal stand-in for an Optuna trial, used when Optuna isn't installed."""
+    """Minimal Optuna-trial interface used for random search when Optuna is unavailable."""
     def __init__(self, rng):
         self.rng, self.params = rng, {}
 
@@ -182,10 +177,10 @@ class _RandomTrial:
 
 
 def tune(name: str, objective: Callable[[dict], float], n_trials: int, direction: str) -> tuple[dict, float, str]:
-    """
-    Tune hyper-parameters. `objective(params) -> validation score`.
-    Uses Optuna's TPE sampler when installed (smarter than random search:
-    it learns which regions of the space score well), else plain random search.
+    """Tune hyper-parameters against ``objective(params) -> validation score``.
+
+    Uses Optuna's TPE sampler when available, otherwise random search over the
+    same space. Returns ``(best_params, best_score, method)``.
     """
     space = search_space(name)
     if space is None:

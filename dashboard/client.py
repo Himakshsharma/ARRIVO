@@ -1,9 +1,7 @@
-"""
-Thin client used by the dashboard.
+"""Dashboard client for the Arrivo API.
 
-It talks to the FastAPI service (ARRIVO_API_URL). If the API can't be reached
-it falls back to "embedded mode" and calls the same service functions
-in-process, so a single-container demo (e.g. Hugging Face Spaces) still works.
+Calls the HTTP API at ``ARRIVO_API_URL``. If it is unreachable (or
+``ARRIVO_EMBEDDED=1``), the same service functions are called in-process.
 """
 from __future__ import annotations
 
