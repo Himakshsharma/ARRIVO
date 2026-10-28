@@ -206,6 +206,8 @@ div[data-baseweb="tab-highlight"] {{ background-color: {YELLOW}; }}
 [data-testid="stDataFrame"] {{ filter: invert(0.9) hue-rotate(180deg); }}
 [data-testid="stImage"] img {{ border-radius: 8px; }}
 [data-testid="stJson"] {{ background: {CARD}; }}
+[data-testid="stElementToolbarButtonContainer"], [data-testid="stElementToolbar"] {{ background: {CARD} !important; }}
+[data-testid="stElementToolbar"] button svg {{ fill: {MUTED}; color: {MUTED}; }}
 header[data-testid="stHeader"] * {{ color: {TEXT}; }}
 </style>
 """, unsafe_allow_html=True)
@@ -646,7 +648,7 @@ def page_insights():
     st.markdown('<div class="tiles">' + "".join(f'<div class="tile"><b>{v}</b>{k}</div>' for v, k in tiles)
                 + "</div>", unsafe_allow_html=True)
 
-    t1, t2, t3, t4 = st.tabs(["Model comparison", "What drives delays", "Can you trust the risk levels?", "Data exploration"])
+    t1, t2, t3, t4 = st.tabs(["Model comparison", "Delay drivers", "Calibration", "Exploration"])
     with t1:
         e = pd.DataFrame(m["eta_model_comparison"]); d = pd.DataFrame(m["delay_model_comparison"])
         nice = lambda x: (x.replace(" (sklearn)", "").replace("GradientBoosting", "Gradient Boosting")  # noqa: E731
